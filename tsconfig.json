@@ -1,0 +1,14 @@
+{
+  "extends": "./packages/config/tsconfig/base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@lms/types": ["packages/types/src"],
+      "@lms/types/*": ["packages/types/src/*"],
+      "@lms/database": ["packages/database/src"],
+      "@lms/ui": ["packages/ui/src"],
+      "@lms/config/*": ["packages/config/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist", "build", ".next", ".turbo"]
+}

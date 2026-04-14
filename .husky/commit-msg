@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+# Simple commit message guard — must start with a conventional-ish prefix.
+COMMIT_MSG_FILE="$1"
+MSG=$(head -n1 "$COMMIT_MSG_FILE")
+
+if ! echo "$MSG" | grep -Eq '^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\(.+\))?: .+'; then
+  echo "✘ Commit message phải theo Conventional Commits."
+  echo "  Ví dụ: feat(auth): add google oauth"
+  echo "  Các prefix hợp lệ: feat, fix, docs, style, refactor, perf, test, chore, ci, build, revert"
+  exit 1
+fi

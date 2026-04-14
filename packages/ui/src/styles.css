@@ -1,0 +1,4 @@
+/* @lms/ui — base styles. Consumers import this via `@lms/ui/styles.css`. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
