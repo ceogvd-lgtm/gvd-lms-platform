@@ -14,9 +14,9 @@ async function main() {
     update: {},
     create: {
       email: superAdminEmail,
-      fullName: 'Super Admin',
+      name: 'Super Admin',
       role: Role.SUPER_ADMIN,
-      isEmailVerified: true,
+      emailVerified: true,
     },
   });
 
