@@ -1,7 +1,21 @@
 /**
  * Fetch wrapper — points at NEXT_PUBLIC_API_URL and surfaces backend error
  * envelope `{ statusCode, message, error, timestamp }` as a throwable.
+ *
+ * Phase 08.1: automatic access-token refresh on 401. When the backend rejects
+ * a request with 401, the wrapper:
+ *   1. Calls `POST /auth/refresh` with the stored refreshToken
+ *   2. On success, updates the Zustand auth store with the new access token
+ *      and retries the original request ONCE with the fresh credentials
+ *   3. On failure (refresh token also expired / revoked), clears the store
+ *      and redirects the browser to /login
+ *
+ * Concurrent 401s are deduped via a module-level `refreshInFlight` promise —
+ * the first 401 starts the refresh, every subsequent 401 awaits the same
+ * promise, so we issue at most one refresh per expiry event regardless of
+ * how many tabs / components are mid-request.
  */
+import { useAuthStore } from './auth-store';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
@@ -16,20 +30,107 @@ export class ApiError extends Error {
 
 export interface ApiOptions extends Omit<RequestInit, 'body'> {
   body?: unknown;
+  /** Optional override. Defaults to the access token from the auth store. */
   token?: string | null;
 }
 
+// =====================================================
+// Refresh orchestration
+// =====================================================
+
+let refreshInFlight: Promise<string | null> | null = null;
+
+/**
+ * Attempt to refresh the access token. Returns the new token on success,
+ * null on failure. Safe to call concurrently — only one network request is
+ * issued per expiry event.
+ */
+async function attemptRefresh(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    const refreshToken = useAuthStore.getState().refreshToken;
+    if (!refreshToken) return null;
+
+    try {
+      const res = await fetch(`${API_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { accessToken?: string };
+      if (!data.accessToken) return null;
+      // Keep the same refreshToken + user — backend only issued a new access.
+      useAuthStore.setState({ accessToken: data.accessToken });
+      return data.accessToken;
+    } catch {
+      return null;
+    }
+  })();
+
+  try {
+    return await refreshInFlight;
+  } finally {
+    refreshInFlight = null;
+  }
+}
+
+/** Paths that MUST NOT trigger auto-refresh (refresh loop prevention). */
+function isAuthFlowPath(path: string): boolean {
+  return (
+    path.startsWith('/auth/login') ||
+    path.startsWith('/auth/register') ||
+    path.startsWith('/auth/refresh') ||
+    path.startsWith('/auth/logout') ||
+    path.startsWith('/auth/2fa/send') ||
+    path.startsWith('/auth/2fa/verify') ||
+    path.startsWith('/auth/verify-email')
+  );
+}
+
+function redirectToLogin(): void {
+  if (typeof window === 'undefined') return;
+  if (!window.location.pathname.startsWith('/login')) {
+    window.location.href = '/login';
+  }
+}
+
+// =====================================================
+// Core api() wrapper
+// =====================================================
+
 export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Promise<T> {
-  const { body, token, headers, ...rest } = opts;
-  const res = await fetch(`${API_URL}${path}`, {
-    ...rest,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...headers,
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const { body, token: explicitToken, headers, ...rest } = opts;
+
+  const doFetch = (authToken: string | null | undefined) =>
+    fetch(`${API_URL}${path}`, {
+      ...rest,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        ...headers,
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+
+  // Pick token: explicit > store
+  const storeToken = useAuthStore.getState().accessToken;
+  const initialToken = explicitToken ?? storeToken;
+
+  let res = await doFetch(initialToken);
+
+  // Auto-refresh on 401 for non-auth-flow paths
+  if (res.status === 401 && !isAuthFlowPath(path)) {
+    const newToken = await attemptRefresh();
+    if (newToken) {
+      res = await doFetch(newToken);
+    } else {
+      // Refresh failed — nuke the auth state and bounce to /login.
+      useAuthStore.getState().clear();
+      redirectToLogin();
+    }
+  }
 
   const text = await res.text();
   const data = text ? safeJson(text) : null;

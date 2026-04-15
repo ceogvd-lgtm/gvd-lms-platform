@@ -70,6 +70,12 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
             active: isActive('/admin/users'),
           },
           {
+            label: 'Curriculum',
+            href: '/admin/curriculum',
+            icon: LayoutGrid,
+            active: isActive('/admin/curriculum'),
+          },
+          {
             label: 'Audit Log',
             href: '/admin/audit-log',
             icon: LayoutGrid,

@@ -23,11 +23,6 @@ export class LessonsService {
     private readonly audit: AuditService,
   ) {}
 
-  /**
-   * Load a lesson plus its parent chapter + course so callers can check
-   * ownership (instructor) in one query. Also returns a soft-delete aware
-   * flag — we never return deleted lessons unless the caller is admin.
-   */
   private async findLessonWithCourse(id: string) {
     return this.prisma.client.lesson.findUnique({
       where: { id },
@@ -41,10 +36,6 @@ export class LessonsService {
     });
   }
 
-  /**
-   * Ownership check: INSTRUCTOR may only act on lessons belonging to a course
-   * they own. ADMIN and SUPER_ADMIN bypass the check.
-   */
   private assertOwnership(actor: Actor, courseInstructorId: string): void {
     if (actor.role === Role.ADMIN || actor.role === Role.SUPER_ADMIN) return;
     if (actor.role === Role.INSTRUCTOR && actor.id === courseInstructorId) return;
@@ -52,25 +43,38 @@ export class LessonsService {
   }
 
   // =====================================================
-  // CREATE
+  // CREATE under a chapter (nested route)
   // =====================================================
-  async create(actor: Actor, dto: CreateLessonDto) {
-    // Load chapter → course to verify ownership BEFORE creating.
+  async createInChapter(actor: Actor, chapterId: string, dto: Omit<CreateLessonDto, 'chapterId'>) {
     const chapter = await this.prisma.client.chapter.findUnique({
-      where: { id: dto.chapterId },
+      where: { id: chapterId },
       include: { course: { select: { instructorId: true } } },
     });
     if (!chapter) throw new NotFoundException('Không tìm thấy chương');
-
     this.assertOwnership(actor, chapter.course.instructorId);
+
+    const last = await this.prisma.client.lesson.findFirst({
+      where: { chapterId, isDeleted: false },
+      orderBy: { order: 'desc' },
+      select: { order: true },
+    });
 
     return this.prisma.client.lesson.create({
       data: {
-        chapterId: dto.chapterId,
+        chapterId,
         title: dto.title,
         type: dto.type,
-        order: dto.order ?? 0,
+        order: (last?.order ?? -1) + 1,
       },
+    });
+  }
+
+  // Backward-compat: flat POST /lessons still works (Phase 04 API).
+  async create(actor: Actor, dto: CreateLessonDto) {
+    return this.createInChapter(actor, dto.chapterId, {
+      title: dto.title,
+      type: dto.type,
+      order: dto.order,
     });
   }
 
@@ -95,15 +99,41 @@ export class LessonsService {
   }
 
   // =====================================================
-  // DELETE  (ADMIN / SUPER_ADMIN ONLY — enforced BY CONTROLLER via @Roles)
-  //
-  // IMPORTANT: per CLAUDE.md INSTRUCTOR "TUYỆT ĐỐI KHÔNG CÓ NÚT XOÁ".
-  // We soft-delete (isDeleted=true) and always log to AuditLog.
+  // REORDER lesson within its chapter
+  // =====================================================
+  async reorder(actor: Actor, id: string, newOrder: number) {
+    const lesson = await this.findLessonWithCourse(id);
+    if (!lesson || lesson.isDeleted) {
+      throw new NotFoundException('Không tìm thấy bài giảng');
+    }
+    this.assertOwnership(actor, lesson.chapter.course.instructorId);
+
+    const siblings = await this.prisma.client.lesson.findMany({
+      where: { chapterId: lesson.chapterId, isDeleted: false },
+      orderBy: { order: 'asc' },
+      select: { id: true },
+    });
+
+    const without = siblings.filter((l) => l.id !== id);
+    const clamped = Math.min(Math.max(0, newOrder), without.length);
+    const next = [...without.slice(0, clamped), { id }, ...without.slice(clamped)];
+
+    await this.prisma.client.$transaction(
+      next.map((l, idx) =>
+        this.prisma.client.lesson.update({
+          where: { id: l.id },
+          data: { order: idx },
+        }),
+      ),
+    );
+
+    return { message: 'Đã cập nhật thứ tự bài giảng', lessons: next };
+  }
+
+  // =====================================================
+  // DELETE (soft, ADMIN+ only) — CLAUDE.md: INSTRUCTOR TUYỆT ĐỐI KHÔNG XOÁ
   // =====================================================
   async softDelete(actor: Actor, id: string, meta: RequestMeta) {
-    // Double-check at service layer: even if an instructor somehow reached
-    // this method, refuse. This is defense-in-depth — the controller already
-    // blocks with @Roles(ADMIN, SUPER_ADMIN).
     if (actor.role !== Role.ADMIN && actor.role !== Role.SUPER_ADMIN) {
       throw new ForbiddenException('Chỉ quản trị viên mới có quyền xoá bài giảng');
     }
