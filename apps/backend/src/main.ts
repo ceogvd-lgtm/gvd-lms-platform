@@ -1,5 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 import helmet from 'helmet';
 
 import { AppModule } from './app.module';
@@ -36,6 +37,11 @@ async function bootstrap() {
   // Trust proxy so req.ip honours X-Forwarded-For (needed for rate limiting +
   // LoginLog behind a reverse proxy).
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
+  // Explicit Socket.io adapter — NestJS WILL auto-detect @nestjs/platform-
+  // socket.io in most setups, but pinning it here avoids the silent
+  // fall-through that sometimes happens under ts-node-dev transpile-only.
+  app.useWebSocketAdapter(new IoAdapter(app));
 
   const port = Number(process.env.PORT ?? 4000);
   await app.listen(port);

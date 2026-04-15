@@ -10,8 +10,9 @@ import {
   DropdownMenuTrigger,
   Input,
 } from '@lms/ui';
-import { Bell, LogOut, Menu, Search, Settings, User as UserIcon } from 'lucide-react';
+import { LogOut, Menu, Search, Settings, User as UserIcon } from 'lucide-react';
 
+import { NotificationBell } from '@/components/notifications/notification-bell';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useAuthStore } from '@/lib/auth-store';
 
@@ -56,15 +57,8 @@ export function AppHeader({ onToggleSidebar }: AppHeaderProps) {
       </div>
 
       <div className="flex flex-1 items-center justify-end gap-1">
-        {/* Notification bell */}
-        <button
-          type="button"
-          className="relative inline-flex h-10 w-10 items-center justify-center rounded-button text-muted hover:bg-surface-2 hover:text-foreground transition-colors"
-          aria-label="Thông báo"
-        >
-          <Bell className="h-5 w-5" />
-          <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-error ring-2 ring-surface" />
-        </button>
+        {/* Notification bell — live via Socket.io */}
+        <NotificationBell />
 
         {/* Theme toggle */}
         <ThemeToggle />

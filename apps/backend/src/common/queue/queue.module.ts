@@ -4,12 +4,15 @@ import { ConfigService } from '@nestjs/config';
 
 import { WEBGL_EXTRACT_QUEUE } from '../storage/storage.constants';
 
+export const EMAIL_QUEUE = 'email';
+
 /**
  * Global BullMQ wiring — shares the REDIS_URL used by Phase 03 Redis service.
  *
  * We only register the queue NAMES here; the actual processor classes are
  * registered in the feature modules that own them
- * (e.g. StorageModule for the WebGL extract worker).
+ * (e.g. StorageModule for the WebGL extract worker, NotificationsModule
+ * for the email worker).
  */
 @Module({
   imports: [
@@ -30,6 +33,16 @@ import { WEBGL_EXTRACT_QUEUE } from '../storage/storage.constants';
       },
     }),
     BullModule.registerQueue({ name: WEBGL_EXTRACT_QUEUE }),
+    BullModule.registerQueue({
+      name: EMAIL_QUEUE,
+      defaultJobOptions: {
+        // Retry up to 3 times with exponential backoff 2^n seconds (2s, 4s, 8s).
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+        removeOnComplete: { count: 100 }, // keep the last 100 for debug
+        removeOnFail: { count: 500 },
+      },
+    }),
   ],
   exports: [BullModule],
 })

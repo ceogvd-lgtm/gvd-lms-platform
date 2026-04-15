@@ -13,9 +13,9 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 
-import { MailService } from '../../common/mail/mail.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
+import { EmailService } from '../notifications/email.service';
 
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -54,7 +54,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly jwt: JwtService,
-    private readonly mail: MailService,
+    private readonly email: EmailService,
     private readonly config: ConfigService,
   ) {}
 
@@ -88,11 +88,11 @@ export class AuthService {
     const link = `${frontendUrl}/auth/verify-email?token=${token}`;
 
     try {
-      await this.mail.sendVerifyEmail(user.email, user.name, link);
+      await this.email.sendVerifyEmail(user.email, user.name, link);
     } catch (err) {
-      // Don't 500 the registration if SMTP is down — just log.
+      // Don't 500 the registration if the queue is unreachable — just log.
       this.logger.warn(
-        `Registered ${user.email} but verify-email failed: ${(err as Error).message}`,
+        `Registered ${user.email} but verify-email enqueue failed: ${(err as Error).message}`,
       );
     }
 
@@ -270,7 +270,7 @@ export class AuthService {
     });
     if (!user) throw new UnauthorizedException('Người dùng không tồn tại');
 
-    await this.mail.send2FACode(user.email, user.name, otp);
+    await this.email.send2FACode(user.email, user.name, otp);
     return { message: 'Mã OTP đã được gửi đến email của bạn' };
   }
 

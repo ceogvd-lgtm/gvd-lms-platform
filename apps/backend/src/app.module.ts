@@ -19,6 +19,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { LessonsModule } from './modules/lessons/lessons.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { StorageModule } from './modules/storage/storage.module';
 
 // The shared .env file lives at the monorepo root. At runtime the compiled
@@ -54,6 +55,7 @@ const monorepoRoot = join(__dirname, '..', '..', '..');
     MailModule,
     RbacModule,
     AuditModule,
+    NotificationsModule,
     AuthModule,
     AdminModule,
     LessonsModule,

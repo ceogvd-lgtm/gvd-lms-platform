@@ -3,9 +3,9 @@ import { JwtService } from '@nestjs/jwt';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 
-import { MailService } from '../../common/mail/mail.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
+import { EmailService } from '../notifications/email.service';
 
 import { AuthService } from './auth.service';
 
@@ -35,9 +35,11 @@ describe('AuthService', () => {
     signAsync: jest.fn().mockResolvedValue('signed-token'),
     verifyAsync: jest.fn(),
   };
-  const mailMock = {
-    sendVerifyEmail: jest.fn(),
-    send2FACode: jest.fn(),
+  // Phase 07: AuthService now uses the queue-backed EmailService instead of
+  // calling MailService directly. The test double just records the calls.
+  const emailMock = {
+    sendVerifyEmail: jest.fn().mockResolvedValue({ jobId: 'job-1' }),
+    send2FACode: jest.fn().mockResolvedValue({ jobId: 'job-2' }),
   };
   const configMock = {
     get: jest.fn((key: string) => {
@@ -55,7 +57,7 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: prismaMock },
         { provide: RedisService, useValue: redisMock },
         { provide: JwtService, useValue: jwtMock },
-        { provide: MailService, useValue: mailMock },
+        { provide: EmailService, useValue: emailMock },
         { provide: ConfigService, useValue: configMock },
       ],
     }).compile();
@@ -79,7 +81,7 @@ describe('AuthService', () => {
       ).rejects.toThrow('Email đã được đăng ký');
     });
 
-    it('creates user, stores verify token in redis, sends email', async () => {
+    it('creates user, stores verify token in redis, enqueues email', async () => {
       prismaMock.client.user.findUnique.mockResolvedValueOnce(null);
       prismaMock.client.user.create.mockResolvedValueOnce({
         id: 'u1',
@@ -99,7 +101,11 @@ describe('AuthService', () => {
         'u1',
         24 * 60 * 60,
       );
-      expect(mailMock.sendVerifyEmail).toHaveBeenCalled();
+      expect(emailMock.sendVerifyEmail).toHaveBeenCalledWith(
+        'a@b.com',
+        'Test',
+        expect.stringMatching(/^http:\/\/localhost:3000\/auth\/verify-email\?token=/),
+      );
       expect(res.message).toContain('Đăng ký thành công');
     });
   });
