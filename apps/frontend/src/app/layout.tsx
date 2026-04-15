@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Plus_Jakarta_Sans } from 'next/font/google';
+import { JetBrains_Mono, Plus_Jakarta_Sans } from 'next/font/google';
 
 import { Providers } from '@/components/providers';
 
@@ -8,7 +8,14 @@ import './globals.css';
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin', 'vietnamese'],
   display: 'swap',
+  weight: ['300', '400', '500', '600', '700'],
   variable: '--font-sans',
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-mono',
 });
 
 export const metadata: Metadata = {
@@ -18,8 +25,12 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="vi" suppressHydrationWarning className={plusJakarta.variable}>
-      <body className="font-sans bg-white dark:bg-dark-bg text-slate-900 dark:text-slate-100 antialiased">
+    <html
+      lang="vi"
+      suppressHydrationWarning
+      className={`${plusJakarta.variable} ${jetbrainsMono.variable}`}
+    >
+      <body className="bg-background text-foreground font-sans antialiased">
         <Providers>{children}</Providers>
       </body>
     </html>

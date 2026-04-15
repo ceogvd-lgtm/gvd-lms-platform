@@ -2,11 +2,78 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ================================================================ */
+/* Design tokens — Phase 05                                         */
+/* HSL space-separated triplets so Tailwind classes can apply       */
+/* alpha via `hsl(var(--token) / <alpha-value>)`.                   */
+/* ================================================================ */
+
 @layer base {
   :root {
     color-scheme: light;
+
+    --primary: 221 83% 53%;        /* #2563EB blue-600 */
+    --primary-dark: 224 64% 33%;   /* #1E40AF blue-800 */
+    --secondary: 262 83% 58%;      /* #7C3AED violet-600 */
+
+    --background: 0 0% 100%;
+    --surface: 210 40% 98%;        /* #F8FAFC */
+    --surface-2: 214 32% 91%;      /* card bg #E2E8F0 */
+    --border: 214 32% 91%;         /* #E2E8F0 */
+
+    --text-primary: 222 84% 5%;    /* #020817 */
+    --text-secondary: 215 16% 47%; /* #64748B */
+
+    --success: 142 76% 36%;        /* #16A34A */
+    --warning: 38 92% 50%;         /* #F59E0B */
+    --error: 0 72% 51%;            /* #DC2626 */
   }
+
   .dark {
     color-scheme: dark;
+
+    --background: 222 84% 5%;      /* #0F172A */
+    --surface: 217 33% 13%;        /* #1A2234 */
+    --surface-2: 217 33% 17%;      /* #1E293B */
+    --border: 217 33% 22%;
+
+    --text-primary: 210 40% 98%;
+    --text-secondary: 215 20% 65%;
+
+    /* Brand stays the same; the palette numerics still work in dark. */
+  }
+
+  /* Smooth color transitions when toggling theme — only on background +
+     border + text colors, not on transforms or layout. */
+  *,
+  *::before,
+  *::after {
+    transition-property: background-color, border-color, color, fill, stroke;
+    transition-duration: 200ms;
+    transition-timing-function: ease;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+
+  /* Accessibility: ensure focus-visible ring on every interactive element */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Skeleton shimmer gradient — used by Skeleton component */
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--surface-2) / 0.6) 0%,
+      hsl(var(--surface-2) / 0.9) 50%,
+      hsl(var(--surface-2) / 0.6) 100%
+    );
+    background-size: 1000px 100%;
   }
 }

@@ -1,9 +1,8 @@
 'use client';
 
-import { cn } from '@lms/ui';
+import { cn, Tooltip } from '@lms/ui';
 import * as React from 'react';
 
-import { Tooltip } from '@/components/ui/tooltip';
 import {
   checkAdminRules,
   type Actor,

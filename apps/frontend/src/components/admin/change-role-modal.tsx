@@ -1,10 +1,17 @@
 'use client';
 
-import { Button } from '@lms/ui';
+import {
+  Button,
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@lms/ui';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { Modal } from '@/components/ui/modal';
 import { RoleBadge } from '@/components/ui/role-badge';
 import { ApiError } from '@/lib/api';
 import type { Role } from '@/lib/rbac';
@@ -52,62 +59,65 @@ export function ChangeRoleModal({ open, onClose, target, onConfirm }: Props) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Đổi vai trò người dùng">
-      <div className="space-y-5">
-        {/* Target info */}
-        <div className="rounded-card bg-slate-50 dark:bg-slate-800/50 p-4">
-          <div className="flex items-center justify-between">
-            <div className="min-w-0">
-              <p className="font-semibold text-slate-900 dark:text-white truncate">{target.name}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{target.email}</p>
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Đổi vai trò người dùng</DialogTitle>
+        </DialogHeader>
+        <DialogBody className="space-y-5">
+          {/* Target info */}
+          <div className="rounded-card bg-surface-2/50 p-4">
+            <div className="flex items-center justify-between">
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-foreground">{target.name}</p>
+                <p className="truncate text-xs text-muted">{target.email}</p>
+              </div>
+              <RoleBadge role={target.role} />
             </div>
-            <RoleBadge role={target.role} />
           </div>
-        </div>
 
-        {/* Role picker */}
-        <div>
-          <p className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">Vai trò mới</p>
-          <div className="grid grid-cols-2 gap-2">
-            {ROLES.map((r) => {
-              const active = chosen === r;
-              return (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => setSelected(r)}
-                  className={
-                    'flex items-center justify-center gap-2 rounded-button border-2 px-3 py-2.5 text-sm font-medium transition-all ' +
-                    (active
-                      ? 'border-primary bg-primary-50 dark:bg-primary-900/20'
-                      : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600')
-                  }
-                >
-                  <RoleBadge role={r} />
-                </button>
-              );
-            })}
+          {/* Role picker */}
+          <div>
+            <p className="mb-2 text-sm font-medium text-foreground">Vai trò mới</p>
+            <div className="grid grid-cols-2 gap-2">
+              {ROLES.map((r) => {
+                const active = chosen === r;
+                return (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setSelected(r)}
+                    className={
+                      'flex items-center justify-center gap-2 rounded-button border-2 px-3 py-2.5 text-sm font-medium transition-all ' +
+                      (active
+                        ? 'border-primary bg-primary/10'
+                        : 'border-border hover:border-primary/50')
+                    }
+                  >
+                    <RoleBadge role={r} />
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
 
-        {/* Warning */}
-        {!unchanged && (
-          <div className="rounded-card bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
-            ⚠️ Hành động này sẽ thay đổi quyền truy cập của người dùng ngay lập tức và được ghi lại
-            trong Audit Log.
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex justify-end gap-2">
+          {/* Warning */}
+          {!unchanged && (
+            <div className="rounded-card bg-warning/10 px-4 py-3 text-sm text-warning">
+              Hành động này sẽ thay đổi quyền truy cập của người dùng ngay lập tức và được ghi lại
+              trong Audit Log.
+            </div>
+          )}
+        </DialogBody>
+        <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
             Huỷ
           </Button>
           <Button type="button" onClick={handleConfirm} disabled={unchanged || submitting}>
             {submitting ? 'Đang xử lý…' : 'Xác nhận'}
           </Button>
-        </div>
-      </div>
-    </Modal>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
