@@ -81,7 +81,7 @@ export default function RegisterPage() {
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Tạo tài khoản</h2>
         <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-          Bắt đầu hành trình học tập với LMS Platform
+          Bắt đầu hành trình học tập với GVD next-gen
         </p>
       </div>
 

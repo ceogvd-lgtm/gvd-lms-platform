@@ -26,7 +26,7 @@ export class MailService implements OnModuleInit {
     const port = Number(this.config.get<string>('SMTP_PORT') ?? 587);
     const user = this.config.get<string>('SMTP_USER');
     const pass = this.config.get<string>('SMTP_PASS');
-    this.from = this.config.get<string>('SMTP_FROM') ?? 'LMS Platform <no-reply@lms.local>';
+    this.from = this.config.get<string>('SMTP_FROM') ?? 'GVD next-gen <no-reply@gvd.local>';
 
     this.transporter = nodemailer.createTransport({
       host,
@@ -38,12 +38,12 @@ export class MailService implements OnModuleInit {
 
   async sendVerifyEmail(to: string, name: string, link: string): Promise<void> {
     const html = verifyEmailTemplate(name, link);
-    await this.send(to, 'Xác nhận tài khoản LMS Platform', html);
+    await this.send(to, 'Xác nhận tài khoản GVD next-gen', html);
   }
 
   async send2FACode(to: string, name: string, otp: string): Promise<void> {
     const html = otpEmailTemplate(name, otp);
-    await this.send(to, 'Mã xác thực 2 lớp — LMS Platform', html);
+    await this.send(to, 'Mã xác thực 2 lớp — GVD next-gen', html);
   }
 
   private async send(to: string, subject: string, html: string): Promise<void> {
@@ -72,7 +72,7 @@ function verifyEmailTemplate(name: string, link: string): string {
               <h1 style="margin:0 0 8px;font-size:24px;color:#1E40AF;">Xác nhận email của bạn</h1>
               <p style="margin:0 0 24px;color:#475569;">Chào ${escape(name)},</p>
               <p style="margin:0 0 24px;color:#475569;line-height:1.6;">
-                Cảm ơn bạn đã đăng ký LMS Platform. Vui lòng nhấn nút bên dưới để xác nhận địa chỉ email của bạn.
+                Cảm ơn bạn đã đăng ký GVD next-gen. Vui lòng nhấn nút bên dưới để xác nhận địa chỉ email của bạn.
                 Liên kết có hiệu lực trong <strong>24 giờ</strong>.
               </p>
               <a href="${link}" style="display:inline-block;background:#1E40AF;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:12px;font-weight:600;">Xác nhận tài khoản</a>

@@ -19,8 +19,11 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'LMS Platform',
-  description: 'Hệ thống LMS thế hệ mới tích hợp AI',
+  title: 'GVD next-gen',
+  description: 'Hệ thống đào tạo thực hành kỹ thuật công nghiệp GVD — tích hợp AI',
+  icons: {
+    icon: '/logo-gvd.svg',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

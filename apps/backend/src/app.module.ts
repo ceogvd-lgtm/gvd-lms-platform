@@ -10,13 +10,16 @@ import { AppService } from './app.service';
 import { AuditModule } from './common/audit/audit.module';
 import { MailModule } from './common/mail/mail.module';
 import { PrismaModule } from './common/prisma/prisma.module';
+import { QueueModule } from './common/queue/queue.module';
 import { RbacModule } from './common/rbac/rbac.module';
 import { RolesGuard } from './common/rbac/roles.guard';
 import { RedisModule } from './common/redis/redis.module';
+import { StorageCoreModule } from './common/storage/storage.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { LessonsModule } from './modules/lessons/lessons.module';
+import { StorageModule } from './modules/storage/storage.module';
 
 // The shared .env file lives at the monorepo root. At runtime the compiled
 // module sits in apps/backend/dist/, so we walk up three levels to reach it
@@ -46,12 +49,15 @@ const monorepoRoot = join(__dirname, '..', '..', '..');
     ]),
     PrismaModule,
     RedisModule,
+    QueueModule,
+    StorageCoreModule,
     MailModule,
     RbacModule,
     AuditModule,
     AuthModule,
     AdminModule,
     LessonsModule,
+    StorageModule,
   ],
   controllers: [AppController],
   providers: [

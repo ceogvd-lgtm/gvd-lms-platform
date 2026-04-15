@@ -16,6 +16,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useMemo } from 'react';
 
+import { GvdLogo } from '@/components/brand/gvd-logo';
 import { useAuthStore } from '@/lib/auth-store';
 
 interface AppSidebarProps {
@@ -93,11 +94,15 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
       collapsed={collapsed}
       items={items}
       brand={
-        <Link href="/dashboard" className="flex items-center gap-2 font-bold text-primary">
-          <span className="flex h-8 w-8 items-center justify-center rounded-button bg-primary text-primary-foreground">
-            L
+        <Link href="/dashboard" className="flex items-center gap-2.5 font-bold text-primary">
+          <span className="flex h-10 w-10 items-center justify-center rounded-button bg-primary text-primary-foreground">
+            <GvdLogo className="h-7 w-7" />
           </span>
-          {!collapsed && <span>LMS Platform</span>}
+          {!collapsed && (
+            <span className="text-base">
+              GVD <span className="text-secondary">next-gen</span>
+            </span>
+          )}
         </Link>
       }
       footer={

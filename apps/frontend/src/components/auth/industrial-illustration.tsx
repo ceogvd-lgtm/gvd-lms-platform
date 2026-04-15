@@ -2,6 +2,8 @@
 
 import { motion } from 'framer-motion';
 
+import { GvdLogo } from '@/components/brand/gvd-logo';
+
 /**
  * Decorative SVG used on the left half of the split-screen auth layout.
  * Industrial theme — cogs + circuit lines + abstract factory silhouette.
@@ -60,22 +62,12 @@ export function IndustrialIllustration() {
         transition={{ duration: 0.6, ease: 'easeOut' }}
         className="relative z-10 max-w-md text-center text-white px-8"
       >
-        <div className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-card bg-white/10 backdrop-blur-sm">
-          <svg
-            viewBox="0 0 24 24"
-            className="h-9 w-9"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M12 2L2 7l10 5 10-5-10-5z" />
-            <path d="M2 17l10 5 10-5" />
-            <path d="M2 12l10 5 10-5" />
-          </svg>
+        <div className="mb-6 inline-flex h-24 w-24 items-center justify-center rounded-card bg-white/10 backdrop-blur-sm">
+          <GvdLogo className="h-16 w-16 text-white" />
         </div>
-        <h1 className="mb-3 text-3xl font-bold leading-tight">LMS Platform</h1>
+        <h1 className="mb-3 text-4xl font-bold leading-tight">
+          GVD <span className="text-secondary-300">next-gen</span>
+        </h1>
         <p className="text-base text-blue-100/80 leading-relaxed">
           Hệ thống đào tạo thực hành kỹ thuật công nghiệp thế hệ mới, tích hợp AI và mô phỏng 3D.
         </p>

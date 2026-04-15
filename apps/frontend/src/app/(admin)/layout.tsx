@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
+import { GvdLogo } from '@/components/brand/gvd-logo';
 import { useAuthStore } from '@/lib/auth-store';
 
 /**
@@ -31,8 +32,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <header className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-dark-surface">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-8">
-            <Link href="/admin/users" className="text-lg font-bold text-primary">
-              LMS Admin
+            <Link
+              href="/admin/users"
+              className="flex items-center gap-2.5 text-lg font-bold text-primary"
+            >
+              <GvdLogo className="h-8 w-8" />
+              GVD Admin
             </Link>
             <nav className="flex gap-6 text-sm font-medium">
               <Link
