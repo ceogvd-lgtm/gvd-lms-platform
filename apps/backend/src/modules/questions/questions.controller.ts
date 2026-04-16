@@ -8,7 +8,6 @@ import {
   HttpCode,
   HttpStatus,
   Param,
-  ParseIntPipe,
   Patch,
   Post,
   Query,
@@ -44,12 +43,10 @@ export class QuestionsController {
   // ---------- TAGS autocomplete ----------
   @Get('tags')
   @Roles(Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
-  tags(
-    @CurrentUser() user: JwtPayload,
-    @Query('q') q?: string,
-    @Query('limit', new ParseIntPipe({ optional: true })) limit: number = 50,
-  ) {
-    return this.questions.listTags({ id: user.sub, role: user.role }, q, Math.min(200, limit));
+  tags(@CurrentUser() user: JwtPayload, @Query('q') q?: string, @Query('limit') rawLimit?: string) {
+    const parsed = rawLimit ? Number(rawLimit) : NaN;
+    const limit = Number.isFinite(parsed) && parsed > 0 ? Math.min(200, parsed) : 50;
+    return this.questions.listTags({ id: user.sub, role: user.role }, q, limit);
   }
 
   // ---------- EXPORT (returns JSON rows, frontend converts to xlsx) ----------
