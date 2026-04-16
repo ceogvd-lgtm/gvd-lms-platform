@@ -4,7 +4,9 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { UploadService } from '../storage/upload.service';
 
+import { PptConverterService } from './ppt-converter.service';
 import { TheoryContentsService } from './theory-contents.service';
 
 describe('TheoryContentsService', () => {
@@ -29,7 +31,20 @@ describe('TheoryContentsService', () => {
       },
     };
     const module: TestingModule = await Test.createTestingModule({
-      providers: [TheoryContentsService, { provide: PrismaService, useValue: prismaMock }],
+      providers: [
+        TheoryContentsService,
+        { provide: PrismaService, useValue: prismaMock },
+        // Phase 12 added two collaborators — the Phase 10 tests don't
+        // exercise them, so we wire in minimal stubs.
+        {
+          provide: UploadService,
+          useValue: { uploadContent: jest.fn() },
+        },
+        {
+          provide: PptConverterService,
+          useValue: { convert: jest.fn(), getDeck: jest.fn() },
+        },
+      ],
     }).compile();
     service = module.get(TheoryContentsService);
   });
