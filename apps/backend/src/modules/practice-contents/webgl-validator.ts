@@ -102,8 +102,12 @@ export function validateWebGLSummary(summary: WebGLZipSummary): string | null {
  * If every file shares a single top-level directory (e.g. Unity exports
  * `Builds/…`), strip that prefix so downstream matches look clean.
  * A zip with mixed top-levels is returned unchanged.
+ *
+ * Exported so the BullMQ extractor can apply the SAME normalisation the
+ * validator used — keeping validator + extractor in agreement on what
+ * "at the root" means.
  */
-function stripCommonPrefix(paths: string[]): string[] {
+export function stripCommonPrefix(paths: string[]): string[] {
   if (paths.length === 0) return paths;
   const first = paths[0]!.split('/')[0];
   if (!first) return paths;

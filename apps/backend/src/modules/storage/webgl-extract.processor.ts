@@ -1,13 +1,18 @@
-import { createReadStream, createWriteStream, promises as fs } from 'node:fs';
+import { createWriteStream } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
-import * as unzipper from 'unzipper';
+import unzipper from 'unzipper';
+
+import { STORAGE_PREFIXES, WEBGL_EXTRACT_QUEUE } from '../../common/storage/storage.constants';
+import { StorageService } from '../../common/storage/storage.service';
+import { stripCommonPrefix } from '../practice-contents/webgl-validator';
 
 /**
  * Minimal extension → MIME map, sized for Unity WebGL build outputs.
@@ -44,9 +49,6 @@ function mimeFor(name: string): string {
   return EXT_MIME[lower.slice(idx)] ?? 'application/octet-stream';
 }
 
-import { STORAGE_PREFIXES, WEBGL_EXTRACT_QUEUE } from '../../common/storage/storage.constants';
-import { StorageService } from '../../common/storage/storage.service';
-
 export interface WebglExtractJob {
   /** Object key of the uploaded .zip in MinIO, e.g. content/webgl/_raw/abc.zip */
   zipKey: string;
@@ -57,10 +59,25 @@ export interface WebglExtractJob {
 }
 
 /**
- * Worker: download .zip from MinIO → tmp dir → extract → upload each file
- * back under `content/webgl/{lessonId}/` → verify index.html → delete raw zip.
+ * Worker: download .zip from MinIO → open entries (no disk extract) →
+ * stream each entry to MinIO under `content/webgl/{lessonId}/` → verify
+ * index.html landed → delete raw zip.
  *
- * Runs on the same Node process as the API (single-machine deployment).
+ * History (bug-fix notes):
+ *   - Previously used `unzipper.Extract({ path })` to extract to a tmp
+ *     dir then walked the filesystem. On Windows, the streaming extract
+ *     API could finish the stream before all entries were flushed to
+ *     disk, causing `index.html` (typically the last entry in the
+ *     central directory) to silently go missing → the validator said
+ *     "valid", the extractor said "no index.html". We now iterate the
+ *     parsed central directory via `Open.file` and stream each entry
+ *     directly to MinIO, which is the same API the validator uses, so
+ *     the two stay in agreement.
+ *   - Applies the SAME `stripCommonPrefix` the validator uses, so a
+ *     zip with a Unity wrapper folder (`Builds/index.html`, …) lands
+ *     as `{lessonId}/index.html` — matching the predicted URL the
+ *     upload service writes to the DB.
+ *
  * Idempotent: running twice with the same lessonId wipes the destination
  * prefix first.
  */
@@ -84,47 +101,72 @@ export class WebglExtractProcessor extends WorkerHost {
     const zipPath = join(tmpDir, 'build.zip');
 
     try {
-      // 1. Download zip from MinIO to local temp file.
+      // 1. Download zip from MinIO to a local temp file. We need the file
+      //    on disk (not just a stream) because unzipper needs random
+      //    access to the zip's central directory, which only works on
+      //    seekable sources.
       const readStream = await this.storage.streamDownload(zipKey);
       await pipeline(readStream, createWriteStream(zipPath));
       await job.updateProgress(20);
 
-      // 2. Extract into tmpDir/extracted/
-      const extractDir = join(tmpDir, 'extracted');
-      await fs.mkdir(extractDir, { recursive: true });
-      await pipeline(createReadStream(zipPath), unzipper.Extract({ path: extractDir }));
-      await job.updateProgress(50);
-
-      // 3. Clear any previous extraction at the target prefix, then upload new.
-      const destPrefix = `${STORAGE_PREFIXES.WEBGL}/${lessonId}`;
-      await this.storage.deletePrefix(destPrefix);
-
-      const files = await walk(extractDir);
-      if (files.length === 0) {
+      // 2. Open the zip's central directory. This is the SAME API the
+      //    pre-flight validator uses, so if validation said there's an
+      //    index.html, we'll see it here too.
+      const directory = await unzipper.Open.file(zipPath);
+      const entries = directory.files.filter((e) => e.type === 'File');
+      if (entries.length === 0) {
         throw new Error('Empty zip — no files extracted');
       }
 
+      // 3. Normalise paths + detect wrapper folder. The validator applies
+      //    the SAME `stripCommonPrefix`, so file[i] (raw) corresponds to
+      //    rel[i] (stripped).
+      const rawPaths = entries.map((e) => e.path.replace(/\\/g, '/'));
+      const relPaths = stripCommonPrefix(rawPaths);
+      await job.updateProgress(30);
+
+      // 4. Clear any previous extraction at the target prefix.
+      const destPrefix = `${STORAGE_PREFIXES.WEBGL}/${lessonId}`;
+      await this.storage.deletePrefix(destPrefix);
+
+      // 5. Stream each zip entry directly to MinIO.
       let hasIndex = false;
       let uploaded = 0;
-      for (const absPath of files) {
-        const rel = absPath.slice(extractDir.length + 1).replace(/\\/g, '/');
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i]!;
+        const rel = relPaths[i];
+        if (!rel) continue; // the wrapper folder itself (now empty after strip)
+
         const destKey = `${destPrefix}/${rel}`;
-        const stat = await fs.stat(absPath);
-        const mime = mimeFor(rel);
-        await this.storage.upload(destKey, createReadStream(absPath), stat.size, mime);
+        const size =
+          typeof (entry as unknown as { uncompressedSize?: number }).uncompressedSize === 'number'
+            ? (entry as unknown as { uncompressedSize: number }).uncompressedSize
+            : undefined;
+
+        // `entry.stream()` yields a Readable of the decompressed bytes.
+        // If the MinIO client needs a known size we fall back to buffering
+        // the entry into memory — rare and only for the case the lib
+        // doesn't report uncompressedSize on this entry.
+        if (typeof size === 'number') {
+          await this.storage.upload(destKey, entry.stream() as Readable, size, mimeFor(rel));
+        } else {
+          const buf = await entry.buffer();
+          await this.storage.upload(destKey, buf, buf.length, mimeFor(rel));
+        }
+
         uploaded += 1;
         if (rel === 'index.html' || rel.endsWith('/index.html')) {
           hasIndex = true;
         }
-        // Spread 50-95% across the upload loop.
-        await job.updateProgress(50 + Math.round((uploaded / files.length) * 45));
+        // Spread 30-95% across the upload loop.
+        await job.updateProgress(30 + Math.round((uploaded / entries.length) * 65));
       }
 
       if (!hasIndex) {
         throw new Error('index.html not found in extracted WebGL build');
       }
 
-      // 4. Delete the raw zip — we don't need it once extraction succeeded.
+      // 6. Delete the raw zip — we don't need it once extraction succeeded.
       try {
         await this.storage.delete(zipKey);
       } catch (err) {
@@ -144,22 +186,4 @@ export class WebglExtractProcessor extends WorkerHost {
       await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
     }
   }
-}
-
-/** Recursively walk a directory and return a flat list of absolute file paths. */
-async function walk(dir: string): Promise<string[]> {
-  const out: string[] = [];
-  async function recurse(current: string) {
-    const entries = await fs.readdir(current, { withFileTypes: true });
-    for (const entry of entries) {
-      const abs = join(current, entry.name);
-      if (entry.isDirectory()) {
-        await recurse(abs);
-      } else if (entry.isFile()) {
-        out.push(abs);
-      }
-    }
-  }
-  await recurse(dir);
-  return out;
 }

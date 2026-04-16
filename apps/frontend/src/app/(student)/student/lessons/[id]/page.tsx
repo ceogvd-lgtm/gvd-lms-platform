@@ -4,7 +4,7 @@ import { Button, Tabs, TabsContent, TabsList, TabsTrigger, cn } from '@lms/ui';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, FileText, Menu } from 'lucide-react';
 import Link from 'next/link';
-import { use, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { LessonOutline } from '@/components/student/lesson-outline';
@@ -29,7 +29,7 @@ import {
 } from '@/lib/theory-engine';
 
 interface PageProps {
-  params: Promise<{ id: string }>;
+  params: { id: string };
 }
 
 /**
@@ -51,7 +51,7 @@ interface PageProps {
  * transition — `showConfetti` is true only for ~3 s.
  */
 export default function StudentLessonPage({ params }: PageProps) {
-  const { id: lessonId } = use(params);
+  const { id: lessonId } = params;
   const accessToken = useAuthStore((s) => s.accessToken);
   const user = useAuthStore((s) => s.user);
 

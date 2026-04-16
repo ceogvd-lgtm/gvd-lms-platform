@@ -4,7 +4,7 @@ import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from '@lms/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Archive, Eye, FileQuestion, History, Loader2, Save } from 'lucide-react';
 import Link from 'next/link';
-import { use, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { AttachmentsManager } from '@/components/instructor/attachments-manager';
@@ -21,7 +21,7 @@ const AUTO_SAVE_INTERVAL = 30_000;
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 interface PageProps {
-  params: Promise<{ id: string }>;
+  params: { id: string };
 }
 
 /**
@@ -38,7 +38,7 @@ interface PageProps {
  * Per CLAUDE.md INSTRUCTOR rule: NO delete button anywhere on this page.
  */
 export default function LessonEditorPage({ params }: PageProps) {
-  const { id: lessonId } = use(params);
+  const { id: lessonId } = params;
   const accessToken = useAuthStore((s) => s.accessToken);
 
   // Lesson + parent chapter (so we can render the tree on the left).
