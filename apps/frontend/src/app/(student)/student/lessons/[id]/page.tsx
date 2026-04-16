@@ -11,6 +11,7 @@ import { LessonOutline } from '@/components/student/lesson-outline';
 import { NotesTab } from '@/components/student/notes-tab';
 import { PdfViewer } from '@/components/student/pdf-viewer';
 import { PptPlayer } from '@/components/student/ppt-player';
+import { PracticeTab } from '@/components/student/practice/practice-tab';
 import { ScormPlayer } from '@/components/student/scorm-player';
 import { StudentQuiz } from '@/components/student/student-quiz';
 import { VideoPlayer } from '@/components/student/video-player';
@@ -230,6 +231,7 @@ export default function StudentLessonPage({ params }: PageProps) {
                   </span>
                 )}
               </TabsTrigger>
+              <TabsTrigger value="practice">Thực hành ảo</TabsTrigger>
               <TabsTrigger value="notes">Ghi chú</TabsTrigger>
             </TabsList>
 
@@ -311,6 +313,24 @@ export default function StudentLessonPage({ params }: PageProps) {
                 items={attachmentsQuery.data ?? []}
                 loading={attachmentsQuery.isLoading}
               />
+            </TabsContent>
+
+            {/* ----- Thực hành ảo (Phase 13) ----- */}
+            <TabsContent value="practice">
+              {user ? (
+                <PracticeTab
+                  lessonId={lessonId}
+                  studentId={user.id}
+                  studentName={user.name}
+                  onPassed={() => {
+                    progressQuery.refetch();
+                  }}
+                />
+              ) : (
+                <div className="py-8 text-center text-sm text-muted">
+                  Đăng nhập để làm bài thực hành.
+                </div>
+              )}
             </TabsContent>
 
             {/* ----- Ghi chú ----- */}
