@@ -65,6 +65,14 @@ export class PptConverterService {
   constructor(private readonly storage: StorageService) {}
 
   async convert(lessonId: string, sourceKey: string): Promise<SlideDeck> {
+    // Short-circuit on missing source file — a fake / stale key would
+    // otherwise surface as a 500 from the inner stream read. The
+    // controller wraps us in NotFoundException so the client gets 404.
+    if (!(await this.storage.exists(sourceKey))) {
+      throw new Error(
+        `Source PPT not found in storage: ${sourceKey}. Hãy upload file qua /upload trước.`,
+      );
+    }
     const workdir = await this.makeWorkdir(lessonId);
     try {
       // Pull the raw .pptx down to disk so the converter can read it.

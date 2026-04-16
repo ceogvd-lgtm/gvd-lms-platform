@@ -233,7 +233,15 @@ export class TheoryContentsService {
       );
     }
 
-    return this.pptConverter.convert(lessonId, sourceKey);
+    try {
+      return await this.pptConverter.convert(lessonId, sourceKey);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Convert PPT thất bại';
+      if (msg.includes('not found in storage')) {
+        throw new NotFoundException(msg);
+      }
+      throw err;
+    }
   }
 
   // =====================================================
