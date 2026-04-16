@@ -1,6 +1,6 @@
 import { Role } from '@lms/types';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsEnum, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class ListUsersDto {
   @IsOptional()
@@ -10,6 +10,11 @@ export class ListUsersDto {
   @IsOptional()
   @IsEnum(Role, { message: 'role không hợp lệ' })
   role?: Role;
+
+  /** Filter by account state. `active` = not blocked, `blocked` = blocked. */
+  @IsOptional()
+  @IsIn(['active', 'blocked'])
+  status?: 'active' | 'blocked';
 
   @IsOptional()
   @Type(() => Number)

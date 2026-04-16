@@ -12,15 +12,18 @@ import {
   Post,
   Query,
   Req,
+  Res,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 
 import { Roles } from '../../common/rbac/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 import { AdminService } from './admin.service';
 import { BlockUserDto } from './dto/block-user.dto';
+import { BulkBlockDto } from './dto/bulk-block.dto';
 import { CreateAdminDto } from './dto/create-admin.dto';
+import { ExportUsersDto } from './dto/export-users.dto';
 import { ListAuditLogDto } from './dto/list-audit-log.dto';
 import { ListUsersDto } from './dto/list-users.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
@@ -39,6 +42,25 @@ export class AdminController {
   @Get('users')
   listUsers(@Query() dto: ListUsersDto) {
     return this.admin.listUsers(dto);
+  }
+
+  /**
+   * Export users to CSV or XLSX. Declared BEFORE `GET users/:id` so Nest's
+   * router matches the static path first (guard against the edge case
+   * where a future Nest version ordered dynamic routes before static).
+   */
+  @Get('users/export')
+  async exportUsers(@Query() dto: ExportUsersDto, @Res() res: Response) {
+    const { buffer, contentType, filename } = await this.admin.exportUsers(dto);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.end(buffer);
+  }
+
+  @Get('users/:id')
+  getUserDetail(@Param('id') id: string) {
+    return this.admin.getUserDetail(id);
   }
 
   @Get('audit-log')
@@ -85,6 +107,15 @@ export class AdminController {
     @Req() req: Request,
   ) {
     return this.admin.setBlocked({ id: user.sub, role: user.role }, id, dto, {
+      ip: getClientIp(req),
+    });
+  }
+
+  // ---------- BULK BLOCK / UNBLOCK ----------
+  @Patch('users/bulk-block')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  bulkBlock(@CurrentUser() user: JwtPayload, @Body() dto: BulkBlockDto, @Req() req: Request) {
+    return this.admin.bulkSetBlocked({ id: user.sub, role: user.role }, dto, {
       ip: getClientIp(req),
     });
   }

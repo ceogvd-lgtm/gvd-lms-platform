@@ -1,17 +1,38 @@
 'use client';
 
+import {
+  Avatar,
+  Button,
+  DataTable,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  type ColumnDef,
+} from '@lms/ui';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, ShieldAlert, Trash2, UserCog } from 'lucide-react';
+import {
+  Ban,
+  CheckCircle2,
+  Download,
+  FileSpreadsheet,
+  MoreVertical,
+  ShieldCheck,
+  Trash2,
+  UserCog,
+  UserPlus,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { BlockUserModal } from '@/components/admin/block-user-modal';
 import { ChangeRoleModal } from '@/components/admin/change-role-modal';
-import { UserActionButton } from '@/components/admin/user-action-button';
+import { CreateAdminModal } from '@/components/admin/create-admin-modal';
 import { RoleBadge } from '@/components/ui/role-badge';
-import { adminApi, type AdminUser, ApiError } from '@/lib/api';
+import { adminApi, ApiError, triggerBlobDownload, type AdminUser } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
-import type { Actor, Role } from '@/lib/rbac';
+import { checkAdminRules, type Actor, type Role } from '@/lib/rbac';
 
 const ROLE_FILTERS: Array<{ label: string; value: string }> = [
   { label: 'Tất cả', value: '' },
@@ -21,22 +42,39 @@ const ROLE_FILTERS: Array<{ label: string; value: string }> = [
   { label: 'Student', value: 'STUDENT' },
 ];
 
+const STATUS_FILTERS: Array<{ label: string; value: 'active' | 'blocked' | '' }> = [
+  { label: 'Tất cả trạng thái', value: '' },
+  { label: 'Đang hoạt động', value: 'active' },
+  { label: 'Đã bị khoá', value: 'blocked' },
+];
+
+const PAGE_SIZE = 20;
+
 export default function AdminUsersPage() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const me = useAuthStore((s) => s.user);
   const qc = useQueryClient();
 
   const [search, setSearch] = useState('');
-  const [role, setRole] = useState('');
-  const [page, setPage] = useState(1);
+  const [roleFilter, setRoleFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'blocked' | ''>('');
+  const [pageIndex, setPageIndex] = useState(0);
+  const [selectedRows, setSelectedRows] = useState<AdminUser[]>([]);
   const [changingRoleFor, setChangingRoleFor] = useState<AdminUser | null>(null);
   const [blockingUser, setBlockingUser] = useState<AdminUser | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const query = useQuery({
-    queryKey: ['admin-users', { q: search, role, page }],
+    queryKey: ['admin-users', { q: search, role: roleFilter, status: statusFilter, pageIndex }],
     queryFn: () =>
       adminApi.listUsers(
-        { q: search || undefined, role: role || undefined, page, limit: 20 },
+        {
+          q: search || undefined,
+          role: roleFilter || undefined,
+          status: (statusFilter || undefined) as 'active' | 'blocked' | undefined,
+          page: pageIndex + 1,
+          limit: PAGE_SIZE,
+        },
         accessToken!,
       ),
     enabled: !!accessToken,
@@ -44,13 +82,7 @@ export default function AdminUsersPage() {
   });
 
   const actor: Actor | null = useMemo(
-    () =>
-      me
-        ? {
-            id: me.id,
-            role: me.role as Role,
-          }
-        : null,
+    () => (me ? { id: me.id, role: me.role as Role } : null),
     [me],
   );
 
@@ -73,173 +105,281 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleBulkBlock = async (blocked: boolean) => {
+    if (selectedRows.length === 0) return;
+    try {
+      const result = await adminApi.bulkBlock(
+        { ids: selectedRows.map((u) => u.id), blocked },
+        accessToken!,
+      );
+      if (result.failed.length === 0) {
+        toast.success(`Đã ${blocked ? 'khoá' : 'mở khoá'} ${result.ok.length} tài khoản`);
+      } else {
+        toast.warning(`${result.ok.length} OK, ${result.failed.length} thất bại. Xem Audit Log.`);
+      }
+      setSelectedRows([]);
+      invalidate();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Bulk action thất bại';
+      toast.error(msg);
+    }
+  };
+
+  const handleExport = async (format: 'csv' | 'xlsx') => {
+    try {
+      const blob = await adminApi.exportUsers(
+        {
+          format,
+          q: search || undefined,
+          role: roleFilter || undefined,
+          status: statusFilter || undefined,
+        },
+        accessToken!,
+      );
+      const timestamp = new Date().toISOString().split('T')[0];
+      triggerBlobDownload(blob, `users-${timestamp}.${format}`);
+      toast.success('Đã tải xuống danh sách người dùng');
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Export thất bại';
+      toast.error(msg);
+    }
+  };
+
+  // ---------- Columns ----------
+  // NOTE: hooks must stay above any early-return guard so they are called in
+  // the same order on every render. Don't move this below `if (!actor) return null`.
+  const columns = useMemo<ColumnDef<AdminUser, unknown>[]>(
+    () => [
+      {
+        id: 'user',
+        header: 'Người dùng',
+        cell: ({ row }) => {
+          const u = row.original;
+          const initials = u.name
+            .split(' ')
+            .map((s) => s[0])
+            .filter(Boolean)
+            .slice(-2)
+            .join('');
+          return (
+            <div className="flex items-center gap-3">
+              <Avatar size="sm" src={u.avatar ?? undefined} initials={initials} />
+              <div className="min-w-0">
+                <div className="truncate font-medium text-foreground">{u.name}</div>
+                <div className="truncate text-xs text-muted">{u.email}</div>
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        id: 'role',
+        header: 'Vai trò',
+        cell: ({ row }) => <RoleBadge role={row.original.role as Role} />,
+      },
+      {
+        id: 'status',
+        header: 'Trạng thái',
+        cell: ({ row }) =>
+          row.original.isBlocked ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-900/20 dark:text-red-400">
+              <Ban className="h-3 w-3" /> Bị khoá
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400">
+              <CheckCircle2 className="h-3 w-3" /> Đang hoạt động
+            </span>
+          ),
+      },
+      {
+        id: 'createdAt',
+        header: 'Ngày tạo',
+        cell: ({ row }) => (
+          <span className="text-xs text-muted">
+            {new Date(row.original.createdAt).toLocaleDateString('vi-VN')}
+          </span>
+        ),
+      },
+    ],
+    [],
+  );
+
+  // Early return AFTER all hooks have run — avoids "hooks called conditionally".
   if (!actor) return null;
+  const isSuperAdmin = actor.role === 'SUPER_ADMIN';
+
+  // ---------- Row actions (Dropdown) with 4-Law tooltips ----------
+  const rowActions = (u: AdminUser) => {
+    const target = { id: u.id, role: u.role as Role };
+    const canUpdateRole = checkAdminRules(actor, target, 'UPDATE_ROLE', { superAdminCount });
+    const canBlock = checkAdminRules(actor, target, 'BLOCK_USER');
+    const canDelete = checkAdminRules(actor, target, 'DELETE_USER', { superAdminCount });
+
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-button text-muted hover:bg-surface-2 hover:text-foreground transition-colors"
+            aria-label="Hành động"
+          >
+            <MoreVertical className="h-4 w-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-[14rem]">
+          <DropdownMenuItem
+            disabled={!canUpdateRole.allowed}
+            title={canUpdateRole.reason}
+            onSelect={() => setChangingRoleFor(u)}
+          >
+            <UserCog className="h-4 w-4" />
+            Đổi vai trò
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!canBlock.allowed}
+            title={canBlock.reason}
+            onSelect={() => setBlockingUser(u)}
+          >
+            <ShieldCheck className="h-4 w-4" />
+            {u.isBlocked ? 'Mở khoá' : 'Khoá tài khoản'}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            destructive
+            disabled={!canDelete.allowed}
+            title={canDelete.reason}
+            onSelect={() => handleDelete(u)}
+          >
+            <Trash2 className="h-4 w-4" />
+            Xoá người dùng
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  };
+
+  const totalPages = query.data?.totalPages ?? 1;
 
   return (
-    <>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Quản lý người dùng</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Tạo, khoá, đổi vai trò hoặc xoá người dùng. Các nút bị vô hiệu hoá có tooltip giải thích
-          lý do.
-        </p>
+    <div className="space-y-6">
+      {/* Header + actions */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Quản lý người dùng</h1>
+          <p className="mt-1 text-sm text-muted">
+            Tạo, khoá, đổi vai trò hoặc xoá người dùng. Nút bị vô hiệu hoá hiển thị tooltip lý do.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => handleExport('csv')}>
+            <Download className="h-4 w-4" />
+            Xuất CSV
+          </Button>
+          <Button variant="outline" onClick={() => handleExport('xlsx')}>
+            <FileSpreadsheet className="h-4 w-4" />
+            Xuất Excel
+          </Button>
+          {isSuperAdmin && (
+            <Button onClick={() => setCreateOpen(true)}>
+              <UserPlus className="h-4 w-4" />
+              Tạo Admin
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => {
-              setPage(1);
-              setSearch(e.target.value);
-            }}
-            placeholder="Tìm theo tên hoặc email…"
-            className="h-10 w-full rounded-button border border-slate-200 bg-white pl-10 pr-4 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary-100 dark:border-slate-700 dark:bg-dark-surface dark:focus:ring-primary-900/40"
-          />
-        </div>
-        <div className="flex gap-1 overflow-x-auto">
-          {ROLE_FILTERS.map((r) => (
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => {
+            setPageIndex(0);
+            setSearch(e.target.value);
+          }}
+          placeholder="Tìm theo tên hoặc email…"
+          className="h-10 w-full rounded-button border border-border bg-background px-3.5 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/20 sm:max-w-xs"
+        />
+        <div className="flex flex-wrap gap-2">
+          {STATUS_FILTERS.map((s) => (
             <button
-              key={r.value || 'all'}
+              key={s.value || 'all-s'}
               type="button"
               onClick={() => {
-                setPage(1);
-                setRole(r.value);
+                setPageIndex(0);
+                setStatusFilter(s.value);
               }}
               className={
                 'whitespace-nowrap rounded-button px-3 py-1.5 text-xs font-semibold transition-colors ' +
-                (role === r.value
+                (statusFilter === s.value
                   ? 'bg-primary text-white'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700')
+                  : 'bg-surface-2 text-muted hover:bg-surface-2/80')
               }
             >
-              {r.label}
+              {s.label}
             </button>
           ))}
         </div>
       </div>
-
-      {/* Table */}
-      <div className="overflow-hidden rounded-card border border-slate-200 bg-white dark:border-slate-700 dark:bg-dark-surface">
-        <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
-            <tr>
-              <th className="px-4 py-3">Người dùng</th>
-              <th className="px-4 py-3">Role</th>
-              <th className="px-4 py-3">Trạng thái</th>
-              <th className="px-4 py-3 text-right">Hành động</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-            {query.isLoading && (
-              <tr>
-                <td colSpan={4} className="px-4 py-10 text-center text-slate-400">
-                  Đang tải…
-                </td>
-              </tr>
-            )}
-            {query.isError && (
-              <tr>
-                <td colSpan={4} className="px-4 py-10 text-center text-red-500">
-                  {(query.error as Error).message}
-                </td>
-              </tr>
-            )}
-            {query.data?.data.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-4 py-10 text-center text-slate-400">
-                  Không có người dùng nào khớp.
-                </td>
-              </tr>
-            )}
-            {query.data?.data.map((u) => {
-              const target = { id: u.id, role: u.role };
-              return (
-                <tr key={u.id}>
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-slate-900 dark:text-white">{u.name}</div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">{u.email}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <RoleBadge role={u.role} />
-                  </td>
-                  <td className="px-4 py-3">
-                    {u.isBlocked ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-900/20 dark:text-red-400">
-                        <ShieldAlert className="h-3 w-3" /> Blocked
-                      </span>
-                    ) : (
-                      <span className="text-xs text-slate-400">Active</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-2">
-                      <UserActionButton
-                        actor={actor}
-                        target={target}
-                        action="UPDATE_ROLE"
-                        ctx={{ superAdminCount }}
-                        variant="primary"
-                        onClick={() => setChangingRoleFor(u)}
-                      >
-                        <UserCog className="h-3.5 w-3.5" />
-                        Role
-                      </UserActionButton>
-                      <UserActionButton
-                        actor={actor}
-                        target={target}
-                        action="BLOCK_USER"
-                        variant={u.isBlocked ? 'secondary' : 'danger'}
-                        onClick={() => setBlockingUser(u)}
-                      >
-                        {u.isBlocked ? 'Unblock' : 'Block'}
-                      </UserActionButton>
-                      <UserActionButton
-                        actor={actor}
-                        target={target}
-                        action="DELETE_USER"
-                        ctx={{ superAdminCount }}
-                        variant="danger"
-                        onClick={() => handleDelete(u)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </UserActionButton>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="flex flex-wrap gap-2">
+        {ROLE_FILTERS.map((r) => (
+          <button
+            key={r.value || 'all-r'}
+            type="button"
+            onClick={() => {
+              setPageIndex(0);
+              setRoleFilter(r.value);
+            }}
+            className={
+              'whitespace-nowrap rounded-button px-3 py-1.5 text-xs font-semibold transition-colors ' +
+              (roleFilter === r.value
+                ? 'bg-primary text-white'
+                : 'bg-surface-2 text-muted hover:bg-surface-2/80')
+            }
+          >
+            {r.label}
+          </button>
+        ))}
       </div>
 
-      {/* Pagination */}
-      {query.data && query.data.totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between text-sm">
-          <span className="text-slate-500">
-            Trang {query.data.page} / {query.data.totalPages} · Tổng {query.data.total}
+      {/* Bulk action toolbar — shown when selection is non-empty */}
+      {selectedRows.length > 0 && (
+        <div className="flex items-center justify-between rounded-card border border-primary/40 bg-primary/5 px-4 py-3">
+          <span className="text-sm font-semibold text-primary">
+            Đã chọn {selectedRows.length} người dùng
           </span>
           <div className="flex gap-2">
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="rounded-button border border-slate-200 px-3 py-1.5 disabled:opacity-50 dark:border-slate-700"
-            >
-              Trước
-            </button>
-            <button
-              disabled={page >= (query.data?.totalPages ?? 1)}
-              onClick={() => setPage((p) => p + 1)}
-              className="rounded-button border border-slate-200 px-3 py-1.5 disabled:opacity-50 dark:border-slate-700"
-            >
-              Sau
-            </button>
+            <Button size="sm" variant="outline" onClick={() => handleBulkBlock(true)}>
+              <Ban className="h-4 w-4" /> Khoá tất cả
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => handleBulkBlock(false)}>
+              <CheckCircle2 className="h-4 w-4" /> Mở khoá tất cả
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelectedRows([])}>
+              Bỏ chọn
+            </Button>
           </div>
         </div>
       )}
+
+      {/* DataTable — server-side */}
+      <DataTable
+        data={query.data?.data ?? []}
+        columns={columns}
+        selectable
+        onSelectionChange={setSelectedRows}
+        manualPagination
+        pageCount={totalPages}
+        pageIndex={pageIndex}
+        onPaginationChange={(s) => setPageIndex(s.pageIndex)}
+        loading={query.isLoading}
+        rowActions={rowActions}
+        emptyState={
+          query.isError
+            ? (query.error as Error).message
+            : 'Không có người dùng nào khớp với bộ lọc.'
+        }
+      />
 
       {/* Modals */}
       <ChangeRoleModal
@@ -260,6 +400,11 @@ export default function AdminUsersPage() {
           invalidate();
         }}
       />
-    </>
+      <CreateAdminModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onSuccess={() => invalidate()}
+      />
+    </div>
   );
 }

@@ -530,3 +530,21 @@ model Notification {
   @@index([createdAt])
   @@map("notifications")
 }
+
+// =========================================================
+// SYSTEM SETTINGS (Phase 09)
+// =========================================================
+// Key-value store cho cấu hình runtime: org branding, SMTP,
+// security policy, storage limits. Mỗi key là 1 row nên có thể
+// audit diff per key và thêm setting mới không cần migration.
+// Whitelist key được enforce ở service layer (system-settings).
+
+model SystemSetting {
+  key         String   @id
+  value       Json
+  description String?
+  updatedBy   String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_settings")
+}

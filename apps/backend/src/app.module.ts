@@ -18,14 +18,17 @@ import { StorageCoreModule } from './common/storage/storage.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
+import { CertificatesModule } from './modules/certificates/certificates.module';
 import { ChaptersModule } from './modules/chapters/chapters.module';
 import { CoursesModule } from './modules/courses/courses.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
 import { EnrollmentsModule } from './modules/enrollments/enrollments.module';
 import { LessonsModule } from './modules/lessons/lessons.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { SubjectsModule } from './modules/subjects/subjects.module';
+import { SystemSettingsModule } from './modules/system-settings/system-settings.module';
 
 // The shared .env file lives at the monorepo root. At runtime the compiled
 // module sits in apps/backend/dist/, so we walk up three levels to reach it
@@ -70,6 +73,10 @@ const monorepoRoot = join(__dirname, '..', '..', '..');
     LessonsModule,
     EnrollmentsModule,
     StorageModule,
+    // Phase 09
+    CertificatesModule,
+    ReportsModule,
+    SystemSettingsModule,
   ],
   controllers: [AppController],
   providers: [
