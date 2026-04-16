@@ -412,6 +412,82 @@ export class LessonsService {
       quizAttempts: quizAttempts as unknown as LessonStudentProgress['quizAttempts'],
     };
   }
+
+  // =====================================================
+  // GET lesson context — the lightweight metadata the lesson page needs
+  // to render its sidebar (course outline) + prev/next navigation.
+  //
+  // Available to any authenticated user: the payload is just navigation
+  // metadata (titles + IDs + order). Enrollment / ownership checks
+  // happen at the content-fetch endpoints, not here.
+  // =====================================================
+  async getContext(lessonId: string): Promise<LessonContext> {
+    const lesson = await this.prisma.client.lesson.findUnique({
+      where: { id: lessonId },
+      select: {
+        id: true,
+        title: true,
+        type: true,
+        order: true,
+        isDeleted: true,
+        chapter: {
+          select: {
+            id: true,
+            title: true,
+            order: true,
+            course: { select: { id: true, title: true } },
+          },
+        },
+      },
+    });
+    if (!lesson || lesson.isDeleted) throw new NotFoundException('Không tìm thấy bài giảng');
+
+    // Derive prev/next by walking the course in reading order. We run two
+    // queries (chapters first, then lessons under those chapters) and sort
+    // in JS because Prisma's relation-filter syntax here fights the
+    // cross-relation orderBy we'd otherwise need.
+    // NB: Chapter doesn't have an isDeleted column — only Lesson does.
+    const chapters = await this.prisma.client.chapter.findMany({
+      where: { courseId: lesson.chapter.course.id },
+      orderBy: { order: 'asc' },
+      select: { id: true, order: true },
+    });
+    const chapterIdList = chapters.map((c) => c.id);
+    const chapterOrderById = new Map(chapters.map((c) => [c.id, c.order]));
+
+    const siblingsRaw = await this.prisma.client.lesson.findMany({
+      where: { chapterId: { in: chapterIdList }, isDeleted: false },
+      select: { id: true, title: true, chapterId: true, order: true },
+    });
+    const siblings = siblingsRaw.sort((a, b) => {
+      const co =
+        (chapterOrderById.get(a.chapterId) ?? 0) - (chapterOrderById.get(b.chapterId) ?? 0);
+      return co !== 0 ? co : a.order - b.order;
+    });
+    const idx = siblings.findIndex((l) => l.id === lessonId);
+    const prev = idx > 0 ? { id: siblings[idx - 1]!.id, title: siblings[idx - 1]!.title } : null;
+    const next =
+      idx >= 0 && idx < siblings.length - 1
+        ? { id: siblings[idx + 1]!.id, title: siblings[idx + 1]!.title }
+        : null;
+
+    return {
+      lesson: {
+        id: lesson.id,
+        title: lesson.title,
+        type: lesson.type as 'THEORY' | 'PRACTICE',
+        order: lesson.order,
+      },
+      chapter: {
+        id: lesson.chapter.id,
+        title: lesson.chapter.title,
+        order: lesson.chapter.order,
+      },
+      course: lesson.chapter.course,
+      prev,
+      next,
+    };
+  }
 }
 
 // =====================================================
@@ -457,4 +533,17 @@ export interface LessonStudentProgress {
   progress: LessonProgressRow | null;
   videoProgress: VideoProgressRow | null;
   quizAttempts: QuizAttemptRow[];
+}
+
+// =====================================================
+// Response shape for getContext — used by the student lesson page to
+// render its outline sidebar + prev/next buttons, and by the instructor
+// editor to discover the parent course so it can load the chapter tree.
+// =====================================================
+export interface LessonContext {
+  lesson: { id: string; title: string; type: 'THEORY' | 'PRACTICE'; order: number };
+  chapter: { id: string; title: string; order: number };
+  course: { id: string; title: string };
+  prev: { id: string; title: string } | null;
+  next: { id: string; title: string } | null;
 }

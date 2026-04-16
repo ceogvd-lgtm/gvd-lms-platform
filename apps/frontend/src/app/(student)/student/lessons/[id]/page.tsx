@@ -17,7 +17,7 @@ import { StudentQuiz } from '@/components/student/student-quiz';
 import { VideoPlayer } from '@/components/student/video-player';
 import { ApiError, theoryContentsApi } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
-import { chaptersApi } from '@/lib/curriculum';
+import { chaptersApi, lessonsApi } from '@/lib/curriculum';
 import {
   attachmentsApi,
   lessonEngineApi,
@@ -98,17 +98,18 @@ export default function StudentLessonPage({ params }: PageProps) {
     enabled: !!accessToken && theoryQuery.data?.contentType === 'POWERPOINT',
   });
 
-  // Course chapters — we piggy-back on the existing chaptersApi, but we
-  // need the courseId. We derive it from `lesson.chapter.course` via the
-  // progress call (the student endpoint returns enough context) or skip
-  // the sidebar when unknown.
-  const courseId = (progressQuery.data?.progress as { lessonId?: string } | null | undefined)
-    ? undefined // placeholder — courseId isn't in the progress payload
-    : undefined;
+  // Course navigation context — courseId for the outline, titles for
+  // the header, and the flat prev/next lesson IDs the bottom nav uses.
+  const contextQuery = useQuery({
+    queryKey: ['lesson-context', lessonId],
+    queryFn: () => lessonsApi.getContext(lessonId, accessToken!),
+    enabled: !!accessToken,
+  });
+  const courseId = contextQuery.data?.course.id;
   const tree = useQuery({
     queryKey: ['student-outline', courseId],
     queryFn: () => chaptersApi.listByCourse(courseId!, accessToken!),
-    enabled: false, // we leave outline empty for now; Phase 13 adds a proper endpoint
+    enabled: !!courseId && !!accessToken,
   });
 
   // =====================================================
@@ -166,7 +167,7 @@ export default function StudentLessonPage({ params }: PageProps) {
           <LessonOutline chapters={tree.data} currentLessonId={lessonId} />
         ) : (
           <div className="h-full border-r border-border bg-surface-2/40 p-3 text-xs text-muted">
-            Outline khoá học sẽ xuất hiện khi có ngữ cảnh course (Phase 13).
+            {contextQuery.isLoading ? 'Đang tải mục lục…' : 'Khoá học này chưa có bài nào khác.'}
           </div>
         )}
       </div>
@@ -184,7 +185,11 @@ export default function StudentLessonPage({ params }: PageProps) {
             {tree.data && tree.data.length > 0 ? (
               <LessonOutline chapters={tree.data} currentLessonId={lessonId} />
             ) : (
-              <p className="p-4 text-xs text-muted">Outline sẽ xuất hiện khi có ngữ cảnh course.</p>
+              <p className="p-4 text-xs text-muted">
+                {contextQuery.isLoading
+                  ? 'Đang tải mục lục…'
+                  : 'Khoá học này chưa có bài nào khác.'}
+              </p>
             )}
           </div>
         </div>

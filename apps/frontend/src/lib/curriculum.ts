@@ -224,6 +224,14 @@ export const chaptersApi = {
 // Lessons
 // =====================================================
 
+export interface LessonContext {
+  lesson: { id: string; title: string; type: LessonType; order: number };
+  chapter: { id: string; title: string; order: number };
+  course: { id: string; title: string };
+  prev: { id: string; title: string } | null;
+  next: { id: string; title: string } | null;
+}
+
 export const lessonsApi = {
   createInChapter: (
     chapterId: string,
@@ -251,4 +259,8 @@ export const lessonsApi = {
 
   remove: (id: string, token: string) =>
     api<{ message: string }>(`/lessons/${id}`, { method: 'DELETE', token }),
+
+  /** GET /lessons/:id/context — metadata for outline sidebar + prev/next nav. */
+  getContext: (id: string, token: string) =>
+    api<LessonContext>(`/lessons/${id}/context`, { token }),
 };

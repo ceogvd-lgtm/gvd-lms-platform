@@ -82,6 +82,16 @@ export class LessonsController {
     return this.lessons.getProgressForStudent(user.sub, id);
   }
 
+  // ---------- NAVIGATION CONTEXT ----------
+  // Returns { lesson, chapter, course, prev, next } — enough metadata
+  // for the lesson page to render its outline sidebar + prev/next nav
+  // without needing a separate chapters roundtrip.
+  @Get('lessons/:id/context')
+  @Roles(Role.STUDENT, Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
+  getContext(@Param('id') id: string) {
+    return this.lessons.getContext(id);
+  }
+
   // ---------- ATTACHMENTS (Phase 12) ----------
   @Get('lessons/:id/attachments')
   @Roles(Role.STUDENT, Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
