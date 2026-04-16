@@ -2,7 +2,7 @@
   "name": "@lms/frontend",
   "version": "0.1.0",
   "private": true,
-  "description": "LMS Platform — Next.js 14 App Router frontend",
+  "description": "GVD next-gen — Next.js 14 App Router frontend",
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
@@ -13,13 +13,29 @@
     "clean": "rm -rf .next .turbo"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.1.0",
+    "@dnd-kit/sortable": "^8.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@lms/types": "workspace:*",
     "@lms/ui": "workspace:*",
     "@tanstack/react-query": "^5.28.14",
+    "@tiptap/extension-image": "^3.22.3",
+    "@tiptap/extension-link": "^3.22.3",
+    "@tiptap/extension-placeholder": "^3.22.3",
+    "@tiptap/extension-underline": "^3.22.3",
+    "@tiptap/pm": "^3.22.3",
+    "@tiptap/react": "^3.22.3",
+    "@tiptap/starter-kit": "^3.22.3",
     "framer-motion": "^11.0.28",
+    "lucide-react": "^0.378.0",
     "next": "^14.2.0",
+    "next-themes": "^0.3.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "recharts": "^3.8.1",
+    "socket.io-client": "^4.7.5",
+    "sonner": "^1.5.0",
+    "xlsx": "^0.18.5",
     "zustand": "^4.5.2"
   },
   "devDependencies": {

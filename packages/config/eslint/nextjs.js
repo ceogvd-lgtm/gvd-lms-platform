@@ -22,5 +22,9 @@ module.exports = {
     'react/prop-types': 'off',
     'react-hooks/rules-of-hooks': 'error',
     'react-hooks/exhaustive-deps': 'warn',
+    // This project uses the App Router (app/) exclusively — the Pages
+    // Router rule complains "Pages directory cannot be found" and breaks
+    // lint-staged. Disable it.
+    '@next/next/no-html-link-for-pages': 'off',
   },
 };

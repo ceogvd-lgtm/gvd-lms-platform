@@ -227,6 +227,10 @@ model TheoryContent {
   contentUrl          String
   duration            Int?
   completionThreshold Float       @default(0.8)
+  // Phase 10: TipTap JSON ProseMirror document for the rich-text body
+  // shown alongside the uploaded SCORM/Video/PDF. Nullable for backward
+  // compat with legacy theory contents that only had a contentUrl.
+  body                Json?
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 
@@ -529,4 +533,22 @@ model Notification {
   @@index([userId, isRead])
   @@index([createdAt])
   @@map("notifications")
+}
+
+// =========================================================
+// SYSTEM SETTINGS (Phase 09)
+// =========================================================
+// Key-value store cho cấu hình runtime: org branding, SMTP,
+// security policy, storage limits. Mỗi key là 1 row nên có thể
+// audit diff per key và thêm setting mới không cần migration.
+// Whitelist key được enforce ở service layer (system-settings).
+
+model SystemSetting {
+  key         String   @id
+  value       Json
+  description String?
+  updatedBy   String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_settings")
 }
