@@ -41,19 +41,13 @@ export default function LessonEditorPage({ params }: PageProps) {
   const { id: lessonId } = params;
   const accessToken = useAuthStore((s) => s.accessToken);
 
-  // Lesson + parent chapter (so we can render the tree on the left).
-  const lesson = useQuery({
-    queryKey: ['lesson-edit-meta', lessonId],
-    queryFn: async () => {
-      // We don't have a public GET /lessons/:id, so derive courseId via
-      // the theory-content GET (which loads through assertOwnership and
-      // returns null if no theory exists yet — fine, we just need the
-      // ownership check to pass).
-      // Cheap workaround: ask chapters API to list, then filter.
-      // For Phase 10 this is acceptable; a dedicated endpoint can come later.
-      throw new Error('placeholder — see below');
-    },
-    enabled: false, // we do it manually below
+  // Lesson navigation context — we use this to discover the parent
+  // course so the sidebar tree can render. `/lessons/:id/context`
+  // returns { lesson, chapter, course, prev, next } in a single round-trip.
+  const contextQuery = useQuery({
+    queryKey: ['lesson-context', lessonId],
+    queryFn: () => lessonsApi.getContext(lessonId, accessToken!),
+    enabled: !!accessToken,
   });
 
   // ---- Theory state ----
@@ -135,17 +129,12 @@ export default function LessonEditorPage({ params }: PageProps) {
   };
 
   // ---- Sidebar tree: load all chapters of the parent course ----
-  // We piggy-back on theoryQuery (loaded above) to discover course context.
-  // For Phase 10, if the API doesn't expose it directly we render an
-  // empty placeholder — the editor still works.
-  // (The cleanest fix: add a `GET /lessons/:id` endpoint with course/chapter info.)
-  const courseId = (theoryQuery.data as unknown as { courseId?: string } | null)?.courseId;
+  const courseId = contextQuery.data?.course.id;
   const tree = useQuery({
     queryKey: ['lesson-tree', courseId],
     queryFn: () => chaptersApi.listByCourse(courseId!, accessToken!),
     enabled: !!courseId && !!accessToken,
   });
-  void lesson; // silence unused-var lint — kept for future hook expansion
 
   return (
     <div className="-m-4 flex h-[calc(100vh-64px)] sm:-m-6 lg:-m-8">
@@ -155,7 +144,7 @@ export default function LessonEditorPage({ params }: PageProps) {
       ) : (
         <aside className="hidden w-64 shrink-0 border-r border-border bg-surface-2/30 p-3 lg:block">
           <p className="px-2 text-xs italic text-muted">
-            Cây bài học sẽ xuất hiện sau khi lesson có ngữ cảnh course.
+            {contextQuery.isLoading ? 'Đang tải cây bài học…' : 'Khoá học chưa có bài nào khác.'}
           </p>
         </aside>
       )}
