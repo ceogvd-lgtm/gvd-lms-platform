@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+/* eslint-disable import/order -- prettier re-sorts sibling imports above alias imports; keep build green */
 import { PostLabScreen } from './post-lab-screen';
 import { PreLabScreen } from './pre-lab-screen';
 import { WebGLRunner } from './webgl-runner';
@@ -18,7 +19,7 @@ import {
   type SafetyItemConfig,
   type StartAttemptResult,
 } from '@/lib/practice';
-
+/* eslint-enable import/order */
 
 interface PracticeTabProps {
   lessonId: string;

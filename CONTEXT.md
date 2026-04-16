@@ -4,7 +4,7 @@ Cập nhật ngày: 16/04/2026
 
 ## ĐANG LÀM
 
-Phase 13 — (TBD)
+Phase 14 — (TBD)
 
 ## ĐÃ HOÀN THÀNH
 
@@ -84,44 +84,27 @@ Phase 13 — (TBD)
 
 ### ✅ Phase 10 — Instructor Dashboard
 
-- Database: thêm field body Json? vào TheoryContent (TipTap JSON ProseMirror), migration 20260416120000
+- Database: thêm field body Json? vào TheoryContent, migration 20260416120000
 - Backend modules mới (~14 endpoints):
-  - instructor/dashboard — 4 endpoints (stats, weekly-progress, activity, deadlines)
-  - instructor/analytics — 4 endpoints (list students, detail, export CSV, send-reminder)
+  - instructor/dashboard — 4 endpoints
+  - instructor/analytics — 4 endpoints
   - theory-contents — 3 endpoints (GET, PUT upsert, PATCH body auto-save)
-  - practice-contents — 2 endpoints (GET, PUT upsert)
+  - practice-contents — 2 endpoints
 - 4 unit test mới — tất cả PASS (13 suites, 128 tests)
-- TipTap: 7 packages cài (@tiptap/react, pm, starter-kit, placeholder, link, image, underline)
-- 5 trang instructor mới:
-  - /instructor/dashboard /courses /courses/new /lessons/:id/edit /analytics
+- TipTap: 7 packages cài
+- 5 trang instructor mới: /instructor/dashboard /courses /courses/new /lessons/:id/edit /analytics
 - Wizard 4 bước tạo khoá học + dnd-kit
 - INSTRUCTOR pages KHÔNG có nút Xoá bất kỳ đâu
 - Commit: 08632e9 | Xong ngày: 16/04/2026
 
 ### ✅ Phase 11 — Question Bank System
 
-- Shared types: packages/types/src/assessment.types.ts — QuestionType, Difficulty, QuestionBank, Quiz, QuizQuestion, QuizAttempt
-- Backend questions module — 7 endpoints:
-  - GET /questions — filter + paginated, INSTRUCTOR scope createdBy
-  - GET /questions/tags — autocomplete
-  - GET /questions/export — rows JSON
-  - POST /questions — create + validate options theo type
-  - POST /questions/import?dryRun= — bulk import + preview
-  - PATCH /questions/:id — owner / ADMIN+
-  - DELETE /questions/:id — owner / ADMIN+
-- Validate options per type: SINGLE_CHOICE(1 đúng) / MULTI_CHOICE(≥1) / TRUE_FALSE(true/false) / FILL_BLANK(case-insensitive)
-- Backend quizzes module — 8 endpoints:
-  - GET/POST /lessons/:lessonId/quiz
-  - PATCH/DELETE /quizzes/:id
-  - POST /quizzes/:id/questions (add 1)
-  - POST /quizzes/:id/questions/bulk
-  - POST /quizzes/:id/questions/random-pick (Fisher-Yates)
-  - DELETE /quizzes/:id/questions/:questionId
-  - PATCH /quizzes/:id/questions/reorder
-- 26 unit tests mới: questions.service.spec(15) + quizzes.service.spec(11)
-- Tổng: 15 suites, 154/154 tests PASS
+- Shared types: packages/types/src/assessment.types.ts
+- Backend questions module — 7 endpoints
+- Backend quizzes module — 8 endpoints
+- 26 unit tests mới: 15 suites, 154/154 tests PASS
 - Frontend xlsx@^0.18.5 (SheetJS) đã cài
-- Page /instructor/questions: toolbar + filter + QuestionEditorModal + ExcelImportModal + template mẫu
+- Page /instructor/questions: toolbar + filter + QuestionEditorModal + ExcelImportModal
 - Page /instructor/lessons/:id/quiz: Quiz Builder 3 cột + dnd-kit + QuizPreviewModal
 - 24 routes build OK
 - Commits: 915a59f → 59a653c → 5da2a2f → be4ff17
@@ -130,37 +113,59 @@ Phase 13 — (TBD)
 
 ### ✅ Phase 12 — Theory Lesson Engine
 
-- **Branch**: `claude/phase-12` (3 commits: 2067dc5 → 41d3ff2 → ba297f2)
-- **Backend new modules (3)**:
-  - `scorm` — 4 endpoints: POST /scorm/upload/:lessonId (unzip + parse imsmanifest.xml via xml2js → detect 1.2/2004), GET /scorm/:lessonId/manifest, POST /scorm/:lessonId/track (CMI → LessonProgress), GET /scorm/:lessonId/progress. `unzipper` dùng lại từ Phase 06.
-  - `xapi` — 2 endpoints: POST /xapi/statements (verb IRI → ProgressStatus), GET /xapi/statements?lessonId=
-  - `video-progress` — 2 endpoints: POST /video/:lessonId/progress (monotonic watchedSeconds + threshold check + cascade LessonProgress), GET /video/:lessonId/progress
-- **Backend extended modules**:
-  - `theory-contents` (+3 endpoints): POST /upload (SCORM/XAPI/POWERPOINT/VIDEO → UploadService), POST /convert-ppt (LibreOffice happy path + fallback), GET /slides
-  - `lessons` (+5 endpoints): POST /lessons/:id/complete (content+quiz gate), GET /lessons/:id/progress (bundle), GET+POST+DELETE /lessons/:id/attachments
-- **PPT Converter service**: LibreOffice (`libreoffice --headless --convert-to pdf`) → pdftoppm → PNG per slide → upload về content/ppt/{lessonId}/slide-N.png + slides.json manifest. Auto-detect binaries, fallback graceful nếu không có (FE show message).
-- **Completion logic**:
-  - VIDEO: watchedSeconds/duration >= completionThreshold → VideoProgress.isCompleted = true + cascade LessonProgress = COMPLETED
-  - SCORM/xAPI: tracker service upsert LessonProgress với status theo verb/lessonStatus
-  - PPT: FE báo slide cuối → POST /lessons/:id/complete
-  - Lesson COMPLETED = content done **AND** (không có quiz OR best QuizAttempt.score >= passScore)
-- **34 unit tests mới**: scorm.service.spec(11) + xapi.service.spec(10) + video-progress.service.spec(8) + lessons-completion.service.spec(5). Tổng **19 suites, 188/188 tests PASS**.
-- **Frontend deps**: scorm-again@^3 (dùng dưới dạng file tĩnh copy vào public/scorm-again.min.js), react-pdf@^10, xml2js (backend)
-- **Instructor page mở rộng `/instructor/lessons/:id/edit`**: thêm 2 tab mới
-  - "Nội dung chính" (ContentUploader): radio 4 loại + drag-drop + completionThreshold slider 50-100%
-  - "Tài liệu đính kèm" (AttachmentsManager): multi-file PDF + list
-- **Student page mới `/student/lessons/:id`** (25 routes build):
-  - Layout: header sticky + sidebar outline 240px + 3 tabs + bottom nav sticky
-  - VideoPlayer: custom HTML5 + resume toast + keyboard shortcuts (Space/←→/↑↓/F/M) + heartbeat 10s
-  - ScormPlayer: iframe + scorm-again bridge qua next/script, sandbox an toàn
-  - PptPlayer: 1 slide + thumbnail strip + ← → nav, fallback khi converter chưa có
-  - PdfViewer: react-pdf dynamic import + page nav + zoom 50-150%
-  - NotesTab: TipTap + localStorage `note-{lessonId}-{studentId}` + auto-save 30s
-  - StudentQuiz: idle/taking/result state machine + countdown + pass % animation
-  - Confetti CSS-only 30 spans khi lesson COMPLETED lần đầu
-- **Frontend libs mới**:
-  - `src/lib/theory-engine.ts`: scormApi, xapiApi, videoApi, theoryEngineApi, lessonEngineApi, attachmentsApi
-- **Limitation Phase 12**: grade quiz vẫn ở client (local-grade fallback) vì server `/quiz-attempts` endpoint sẽ làm ở Phase 13. Bình thường quiz pass vì redacted answers → cần implement server-side grading trước khi production.
+- SCORM 1.2/2004: upload + extract + track progress
+- xAPI LRS: nhận statements + parse verb + sync progress
+- Video Player: custom HTML5 + resume + completion tracking
+- PPT Convert: LibreOffice fallback → "Đang xử lý slides..."
+- VideoProgress: upsert mỗi 10 giây, threshold 80%
+- LessonAttachment: upload/delete multiple PDF
+- 18 endpoints mới: /scorm/_ /xapi/_ /video/_ /lessons/:id/_
+- Modules mới: scorm/ xapi/ video-progress/
+- Pages: /student/lessons/[id] (mới) | /instructor/lessons/:id/edit (mở rộng)
+- 34 unit tests mới: 19 suites, 188/188 tests PASS | 25 routes build OK
+- Bug fix: PPT convert 500 → 404 khi sourceKey không tồn tại
+- Known issues → Phase 13:
+  - Quiz grading tạm client-side (auto-pass) → cần POST /quiz-attempts backend
+  - Course outline sidebar tạm empty → cần GET /lessons/:id trả courseId
+  - LibreOffice chưa add vào docker-compose.dev.yml
+  - Bottom nav prev/next disabled → cần course-context endpoint
+- Commits: 2067dc5 → 41d3ff2 → ba297f2 → 5408f30 → 81da453 | Merge: 14d4380
+- Xong ngày: 16/04/2026
+
+### ✅ Phase 13 — Virtual Lab Engine (Unity WebGL)
+
+- **Branch**: `claude/phase-13` — 4 commits: 41b1895 → a3958a2 → ed1f52e → (P13.4 pending)
+- **Backend new `practice` module — 5 endpoints**:
+  - POST `/practice/start` — create IN_PROGRESS PracticeAttempt, enforce maxAttempts (403 when hit), returns scoringConfig + safetyChecklist + timeLimit
+  - POST `/practice/action` — append event to attempt.actions[] (fire-and-forget)
+  - POST `/practice/complete` — run pure scoring engine, cascade LessonProgress = COMPLETED on pass
+  - GET `/practice/:lessonId/attempts` — STUDENT own / INSTRUCTOR owner + ADMIN+ see all
+  - GET `/practice/:lessonId/analytics` — INSTRUCTOR+ heat-map / safety stats / top-50 ranking
+- **Backend extended `practice-contents` module**:
+  - POST `/practice-contents/:lessonId/upload-webgl` — pre-flight peek zip (reject 400 "thiếu Builds.loader.js / index.html"), stage raw → enqueue Phase-06 WebglExtractProcessor, predict served URL
+  - GET `/practice-contents/:lessonId/extract-status?jobId=` — poll BullMQ state (waiting/active/completed/failed + progress 0-100)
+- **Pure scoring engine** (`scoring-engine.ts`):
+  - isCorrect + isInOrder → ×1.10 bonus
+  - mandatory step skipped → 0 points (still in maxScore)
+  - optional step skipped → not counted either side
+  - critical violation → −20% base per occurrence
+  - final clamped at 0; pass when finalScore/maxScore ≥ passScore
+- **28 unit tests mới**: scoring-engine (13) + practice.service (8) + webgl-validator (7). Tổng **22 suites, 216/216 tests PASS**.
+- **Dependencies thêm**: `xml2js`, `archiver` (dev) — backend
+- **Instructor page mở rộng `/instructor/lessons/:id/edit`**: tab "Thực hành ảo" giờ là `PracticeContentEditor` hoàn chỉnh
+  - TipTap introduction + live objectives list
+  - `WebGLUploadPanel` — drag-drop .zip, 400 pre-flight errors surface đỏ, BullMQ extract polling 2s, preview iframe 400×300
+  - `ScoringConfigBuilder` — Steps với dnd-kit reorder (stepId / desc / maxPoints / isMandatory), SafetyChecklist critical toggle
+  - Pass score slider, time limit, max attempts
+- **Student page `/student/lessons/:id`** — tab "Thực hành ảo" mới với 3-phase state machine:
+  - **Pre-lab**: intro + objectives + safety rules (đỏ, critical chip), info strip, attempt history, CTA
+  - **Running**: iframe WebGL + LMS Bridge (SendMessage LMSBridge ReceiveConfig → postMessage fallback), HUD overlay (timer/score/progress), SafetyViolationPopup đỏ với 3s delay
+  - **Post-lab**: giant % badge, per-step timeline, critical violation card, duration, class-avg bar, retry / back
+- **/instructor/analytics** — thêm tab "Thực hành ảo" (`PracticeAnalyticsView`): lesson picker + KPI strip + step heat-map + safety violation stats + top-50 ranking + student timeline drill-down
+- **LMS Bridge convention**:
+  - LMS → Unity: `unityInstance.SendMessage('LMSBridge', 'ReceiveConfig', JSON.stringify(config))`
+  - Unity → LMS: `window.parent.postMessage({ type: 'LMS_ACTION', payload }, '*')` + `{ type: 'LMS_COMPLETE', payload }`
+- **25 routes build OK** (same count as Phase 12 — tab additions don't add routes)
 - Xong ngày: 16/04/2026
 
 ## LƯU Ý QUAN TRỌNG
@@ -169,38 +174,33 @@ Phase 13 — (TBD)
 - docker-compose.override.yml KHÔNG commit | .env KHÔNG commit
 - Sau khi sửa packages/types hoặc packages/database phải build trước
 - Backend hot reload: ts-node-dev (KHÔNG dùng tsx)
-- Seed SUPER_ADMIN: pnpm --filter @lms/database db:seed (seed cả SystemSetting defaults)
+- Seed SUPER_ADMIN: pnpm --filter @lms/database db:seed
 - API prefix luôn là /api/v1/ (không phải /api/)
 - Silent token refresh đã implement trong lib/api.ts
-- DataTable từ @lms/ui dùng TanStack Table v8, hỗ trợ client-side và server-side mode
+- DataTable từ @lms/ui dùng TanStack Table v8
 - pdfmake render với font Roboto (Unicode VN hoạt động tốt)
-- INSTRUCTOR: Tạo + Sửa + Lưu trữ — TUYỆT ĐỐI KHÔNG có nút Xoá ở UI lẫn backend
+- INSTRUCTOR: Tạo + Sửa + Lưu trữ — TUYỆT ĐỐI KHÔNG có nút Xoá
 - Hydration: layout admin/instructor dùng useHasHydrated() trước khi check role
 - TipTap body lưu JSON ProseMirror trong TheoryContent.body — auto-save 30s
 - Question Bank: INSTRUCTOR chỉ thấy câu hỏi mình tạo; ADMIN+ thấy tất cả
-- Excel import/export dùng SheetJS ở frontend — server chỉ nhận JSON đã parse
+- Excel import/export dùng SheetJS ở frontend
 - FILL_BLANK chấm case-insensitive + trim
-- KHÔNG dùng curl từ Git Bash Windows để POST tiếng Việt — dùng Node script hoặc UI
-- Main branch đã merge đủ Phase 01-11 (commit: c0d9156). Phase 12 ở branch `claude/phase-12` chờ merge.
-- Phase 12: scorm-again dùng như file tĩnh tại apps/frontend/public/scorm-again.min.js (copy từ node_modules)
-- Phase 12: LibreOffice fallback nếu binary chưa cài trên host — BE vẫn trả slides.json với converter='fallback'
-- Phase 12: Video heartbeat 10s, monotonic watchedSeconds (rewind không unset completion)
-- Phase 12: POST /lessons/:id/complete validate content done + quiz passed (nếu có)
-- Phase 12: /quiz-attempts grade endpoint để Phase 13 — tạm thời student side grade local
-- Phase 13: cần add /quiz-attempts server endpoint + course-context endpoint cho outline sidebar + attachment viewer
+- KHÔNG dùng curl từ Git Bash Windows để POST tiếng Việt
+- Main branch đã merge đủ Phase 01-12 (commit: 14d4380)
+- Phase 13: Unity WebGL tên project "Builds"
+  (Builds.loader.js / Builds.data / Builds.framework.js / Builds.wasm)
+- Phase 13: LMS Bridge dùng SendMessage('LMSBridge', ...) cho Unity
+- Phase 13: Cần implement POST /quiz-attempts (quiz grading backend)
+- Phase 13: Cần add LibreOffice vào docker-compose.dev.yml
+- Phase 13: Course outline sidebar cần GET /lessons/:id trả courseId
+- Phase 13: PracticeContent model ĐÃ CÓ trong schema → dùng luôn
+- Phase 13: MinIO bucket content/webgl/ ĐÃ CÓ từ Phase 06 → không setup lại
 
-## LỆNH ĐÃ VERIFY (Phase 12)
+## LỆNH ĐÃ VERIFY
 
 ```bash
-# Database
-pnpm --filter @lms/database db:migrate   # apply migrations
-pnpm --filter @lms/database db:seed      # seed admin + SystemSetting defaults
-
-# Backend
-pnpm --filter @lms/backend typecheck     # PASS
-pnpm --filter @lms/backend test          # 19 suites, 188 tests PASS (154 old + 34 new)
-
-# Frontend
-pnpm --filter @lms/frontend typecheck    # PASS
-pnpm --filter @lms/frontend build        # 25 routes built (+1 /student/lessons/[id])
+pnpm --filter @lms/database db:migrate
+pnpm --filter @lms/database db:seed
+pnpm --filter @lms/backend test        # 19 suites, 188 tests PASS
+pnpm --filter @lms/frontend build      # 25 routes built
 ```

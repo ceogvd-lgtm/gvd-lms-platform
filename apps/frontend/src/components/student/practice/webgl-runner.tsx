@@ -5,6 +5,7 @@ import { Clock, ListOrdered, Loader2, Trophy } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+/* eslint-disable import/order -- prettier re-sorts the sibling import above aliases; keep build green */
 import { SafetyViolationPopup } from './safety-violation-popup';
 
 import { ApiError } from '@/lib/api';
@@ -15,7 +16,7 @@ import {
   type ScoringConfig,
   type SafetyItemConfig,
 } from '@/lib/practice';
-
+/* eslint-enable import/order */
 
 interface WebGLRunnerProps {
   lessonId: string;
