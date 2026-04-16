@@ -3,11 +3,12 @@
 import { cn } from '@lms/ui';
 import { CheckCircle2, XCircle } from 'lucide-react';
 
-
+/* eslint-disable import/order -- prettier re-sorts sibling imports above the alias group */
 import { DifficultyBadge } from './difficulty-badge';
 import { QuestionTypeBadge } from './question-type-badge';
 
 import type { QuestionBank } from '@/lib/assessments';
+/* eslint-enable import/order */
 
 interface QuestionPreviewProps {
   question: QuestionBank;

@@ -14,6 +14,7 @@ import { Save } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
+/* eslint-disable import/order -- prettier re-sorts sibling imports above the alias group; keep eslint silent rather than fight the formatter */
 import { OptionEditor } from './option-editor';
 import { TagInput } from './tag-input';
 
@@ -26,7 +27,7 @@ import {
   questionsApi,
 } from '@/lib/assessments';
 import { useAuthStore } from '@/lib/auth-store';
-
+/* eslint-enable import/order */
 
 interface QuestionEditorModalProps {
   open: boolean;
