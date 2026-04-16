@@ -18,10 +18,21 @@ export const STORAGE_PREFIXES = {
   CERTIFICATES: 'certificates',
 } as const;
 
-/** Prefixes served via public-read bucket policy — no presigned URL needed. */
+/**
+ * Prefixes served via public-read bucket policy — no presigned URL needed.
+ *
+ * WebGL is public because Unity builds load their children (`Build/*.loader.js`,
+ * `Build/*.wasm.gz`, `TemplateData/*.css`, …) via relative URLs from
+ * `index.html`. A presigned URL only authorises the specific key it was
+ * signed for, so the index would load but every child asset would 403.
+ * Access control for practice lessons lives at the "who can start an
+ * attempt" layer (see PracticeService.startAttempt ownership check) — not
+ * at the static-asset layer. The serving bucket is isolated from user data.
+ */
 export const PUBLIC_PREFIXES: readonly string[] = [
   STORAGE_PREFIXES.AVATARS,
   STORAGE_PREFIXES.THUMBNAILS,
+  STORAGE_PREFIXES.WEBGL,
 ];
 
 /** Size limits per upload type (bytes). */
