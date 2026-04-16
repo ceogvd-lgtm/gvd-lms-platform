@@ -39,14 +39,38 @@ const EXT_MIME: Record<string, string> = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
-function mimeFor(name: string): string {
+/**
+ * Resolve the Content-Type + optional Content-Encoding for a file inside
+ * a Unity WebGL build.
+ *
+ * Unity emits its runtime files pre-compressed with `.gz` or `.br`
+ * extensions (Builds.framework.js.gz, Builds.wasm.gz, Builds.data.gz …).
+ * Its loader expects the browser to auto-decompress them — which only
+ * happens if we serve them with `Content-Encoding: gzip` (or `br`) and
+ * the *decompressed* Content-Type (e.g. `application/wasm`, not
+ * `application/gzip`).
+ *
+ * Returning `application/gzip` with no Content-Encoding breaks Unity 2022+
+ * builds that ship without the decompression-fallback runtime — which is
+ * the default setting.
+ */
+function mimeFor(name: string): { contentType: string; contentEncoding?: 'gzip' | 'br' } {
   const lower = name.toLowerCase();
-  // Check for compound `.js.gz` / `.wasm.gz` etc. — Unity builds use these.
-  if (lower.endsWith('.gz')) return 'application/gzip';
-  if (lower.endsWith('.br')) return 'application/brotli';
-  const idx = lower.lastIndexOf('.');
-  if (idx < 0) return 'application/octet-stream';
-  return EXT_MIME[lower.slice(idx)] ?? 'application/octet-stream';
+
+  let encoding: 'gzip' | 'br' | undefined;
+  let stripped = lower;
+  if (lower.endsWith('.gz')) {
+    encoding = 'gzip';
+    stripped = lower.slice(0, -3);
+  } else if (lower.endsWith('.br')) {
+    encoding = 'br';
+    stripped = lower.slice(0, -3);
+  }
+
+  const idx = stripped.lastIndexOf('.');
+  const ext = idx >= 0 ? stripped.slice(idx) : '';
+  const contentType = EXT_MIME[ext] ?? 'application/octet-stream';
+  return { contentType, contentEncoding: encoding };
 }
 
 export interface WebglExtractJob {
@@ -142,16 +166,24 @@ export class WebglExtractProcessor extends WorkerHost {
           typeof (entry as unknown as { uncompressedSize?: number }).uncompressedSize === 'number'
             ? (entry as unknown as { uncompressedSize: number }).uncompressedSize
             : undefined;
+        const { contentType, contentEncoding } = mimeFor(rel);
+        const extraHeaders = contentEncoding ? { 'Content-Encoding': contentEncoding } : undefined;
 
         // `entry.stream()` yields a Readable of the decompressed bytes.
         // If the MinIO client needs a known size we fall back to buffering
         // the entry into memory — rare and only for the case the lib
         // doesn't report uncompressedSize on this entry.
         if (typeof size === 'number') {
-          await this.storage.upload(destKey, entry.stream() as Readable, size, mimeFor(rel));
+          await this.storage.upload(
+            destKey,
+            entry.stream() as Readable,
+            size,
+            contentType,
+            extraHeaders,
+          );
         } else {
           const buf = await entry.buffer();
-          await this.storage.upload(destKey, buf, buf.length, mimeFor(rel));
+          await this.storage.upload(destKey, buf, buf.length, contentType, extraHeaders);
         }
 
         uploaded += 1;

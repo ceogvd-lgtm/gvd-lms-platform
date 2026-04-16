@@ -90,15 +90,23 @@ export class StorageService implements OnModuleInit {
   /**
    * Upload a buffer or readable stream to `key`.
    * Caller is responsible for routing `key` under the correct prefix.
+   *
+   * `extraHeaders` is for cases where the uploader needs to set additional
+   * response metadata (e.g. `Content-Encoding: gzip` for Unity WebGL
+   * `.wasm.gz` / `.js.gz` / `.data.gz` files so the browser transparently
+   * decompresses them on fetch — without it Unity's loader throws
+   * "Unable to load file …").
    */
   async upload(
     key: string,
     body: Buffer | Readable,
     size: number,
     contentType: string,
+    extraHeaders?: Record<string, string>,
   ): Promise<void> {
     await this.client.putObject(ROOT_BUCKET, key, body, size, {
       'Content-Type': contentType,
+      ...extraHeaders,
     });
   }
 
