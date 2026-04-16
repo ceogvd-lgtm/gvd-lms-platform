@@ -4,7 +4,7 @@ Cập nhật ngày: 16/04/2026
 
 ## ĐANG LÀM
 
-Phase 11 — (TBD)
+Phase 12 — (TBD)
 
 ## ĐÃ HOÀN THÀNH
 
@@ -118,6 +118,59 @@ Phase 11 — (TBD)
 - **Audit action mới**: INSTRUCTOR_SEND_REMINDER (gửi email at-risk-alert tới học viên nguy cơ)
 - Xong ngày: 16/04/2026
 
+### ✅ Phase 11 — Question Bank System
+
+- **Shared types**: `packages/types/src/assessment.types.ts` viết lại khớp Prisma — `QuestionType` (SINGLE_CHOICE/MULTI_CHOICE/TRUE_FALSE/FILL_BLANK), `Difficulty` (EASY/MEDIUM/HARD), `QuestionBank`, `Quiz`, `QuizQuestion`, `QuizWithQuestions`, `QuizAttempt`.
+- **Backend `questions` module** — 7 endpoints:
+  - `GET /questions` — filter q/type/difficulty/tags/courseId/departmentId, paginated; INSTRUCTOR tự scope về createdBy của mình
+  - `GET /questions/tags` — autocomplete (tag, count) từ kho của actor
+  - `GET /questions/export` — rows JSON (frontend tự xuất .xlsx bằng SheetJS)
+  - `POST /questions` — create với validate options theo type
+  - `POST /questions/import?dryRun=` — bulk import + preview (tối đa 1000 rows/request)
+  - `PATCH /questions/:id` — owner / ADMIN+
+  - `DELETE /questions/:id` — owner / ADMIN+ (INSTRUCTOR chặn xoá nếu câu hỏi đang dùng trong quiz)
+- **Validate options per type** trong `validateAndNormalizeOptions()`:
+  - SINGLE_CHOICE: 2–6 lựa chọn, đúng 1 đáp án đúng
+  - MULTI_CHOICE: 2–10 lựa chọn, ≥1 đáp án đúng
+  - TRUE_FALSE: đúng 2 lựa chọn với id ép về `'true'`/`'false'`
+  - FILL_BLANK: ≥1 đáp án đúng (chấm so khớp case-insensitive + trim)
+- **Tag normalise**: lowercase + trim + dedupe trước khi lưu và trước khi query `hasSome`.
+- **Backend `quizzes` module** — 8 endpoints:
+  - `GET /lessons/:lessonId/quiz` — STUDENT + INSTRUCTOR+ (redact `isCorrect`/`correctAnswer`/`explanation` khi viewer không phải course owner / ADMIN+)
+  - `POST /lessons/:lessonId/quiz` — instructor own, chặn nếu đã có quiz
+  - `PATCH /quizzes/:id` — update settings (title/timeLimit/shuffle/showAnswerAfter/passScore/maxAttempts)
+  - `DELETE /quizzes/:id` — ADMIN+ only, ghi AuditLog QUIZ_DELETE
+  - `POST /quizzes/:id/questions` — add 1 câu vào quiz, dedupe bằng unique(quizId, questionId)
+  - `POST /quizzes/:id/questions/bulk` — add nhiều câu, skip trùng, giữ order liên tục
+  - `POST /quizzes/:id/questions/random-pick` — Fisher–Yates pool ≤500 rồi add bulk (chạy được trên cả SQLite và Postgres)
+  - `DELETE /quizzes/:id/questions/:questionId` — gỡ + compact order
+  - `PATCH /quizzes/:id/questions/reorder` — reorder toàn bộ theo `orderedIds[]`
+- **Audit**: `QUIZ_DELETE` khi ADMIN+ xoá quiz.
+- **Unit test mới** (26): `questions.service.spec.ts` (15) + `quizzes.service.spec.ts` (11) — cover validate options, ownership guard, bulk dedup, redact cho student. **Tổng 15 suites, 154 tests PASS.**
+- **Frontend** — thêm `src/lib/assessments.ts` (types + `questionsApi` + `quizzesApi`).
+- **Frontend dependency**: `xlsx@^0.18.5` (SheetJS).
+- **Instructor sidebar**: thêm mục "Ngân hàng câu hỏi" → `/instructor/questions` (icon HelpCircle).
+- **Lesson editor header**: thêm nút "Quiz" → `/instructor/lessons/:id/quiz` (icon FileQuestion).
+- **Page `/instructor/questions`**:
+  - Toolbar tìm theo text + filter loại/độ khó + `TagInput` autocomplete tags
+  - Paginated list rows (20/page) với `DifficultyBadge` (xanh/vàng/đỏ) + `QuestionTypeBadge`
+  - Modal `QuestionEditorModal` tạo/sửa — 4 tab loại câu hỏi, `OptionEditor` đổi hành vi radio/checkbox/lock theo type, điểm + difficulty + tags
+  - Modal `PreviewDialog` — render như học viên qua `QuestionPreview` (revealAnswers)
+  - `ExcelImportModal`: drag-drop .xlsx → SheetJS parse → preview 20 dòng đầu với trạng thái OK/lỗi → POST `/questions/import`
+  - "Tải template mẫu" — SheetJS build 4 row mẫu cho 4 loại câu hỏi
+  - "Xuất Excel" — `GET /questions/export` → SheetJS writeFile với filename có ngày
+- **Page `/instructor/lessons/:id/quiz`** — Quiz Builder 3 cột:
+  - Cột trái (360px): `QuestionBankPicker` — search + filter + tags + **nút "Bốc ngẫu nhiên N câu"**; mỗi row `draggable` (HTML5 drag) mang `application/x-question-id`; hiển thị greyed-out cho câu đã có trong quiz
+  - Cột giữa (flex): Drop zone highlight khi drag; `QuizQuestionList` dùng `@dnd-kit/sortable` để reorder, click câu để preview, nút gỡ (trash)
+  - Cột phải (300px, sticky trên desktop): `QuizSettingsPanel` — title/thời gian/passScore/maxAttempts/shuffle/showAnswerAfter, dirty-detect + save
+  - Toolbar: "Xem trước" mở `QuizPreviewModal` render toàn bộ quiz với header stats (số câu, tổng điểm, pass %, thời gian)
+  - Empty state khi chưa có quiz: nút "Tạo quiz cho bài giảng"
+- **Components tái dùng** (`src/components/questions/*`): `DifficultyBadge`, `QuestionTypeBadge`, `TagInput` (hue ổn định theo hash tag), `OptionEditor`, `QuestionPreview`, `QuestionEditorModal`, `ExcelImportModal`
+- **Components Quiz Builder** (`src/components/quiz/*`): `QuizSettingsPanel`, `QuizQuestionList` (dnd-kit), `QuestionBankPicker`, `QuizPreviewModal`
+- **Loading + Error + Empty states**: mỗi trang mới có `loading.tsx` + `error.tsx` + empty-state block theo CLAUDE.md
+- **Typecheck**: backend + frontend đều PASS
+- Xong ngày: 16/04/2026
+
 ## LƯU Ý QUAN TRỌNG
 
 - Docker port 5433 (không phải 5432)
@@ -135,6 +188,10 @@ Phase 11 — (TBD)
 - TipTap body lưu JSON ProseMirror trong `TheoryContent.body` — auto-save 30s qua `PATCH /lessons/:id/theory/body`
 - Lesson revision history Phase 10 chỉ stub UI — Phase 11 sẽ thêm LessonRevision model
 - Instructor analytics gửi email "nhắc học" qua `EmailService.sendAtRiskAlert` (template Phase 07)
+- Question Bank: INSTRUCTOR tự scope (chỉ thấy + sửa câu hỏi mình tạo); ADMIN+ thấy + sửa tất cả
+- Quiz Builder UI ở `/instructor/lessons/:id/quiz`; vào từ lesson editor hoặc sidebar mục "Ngân hàng câu hỏi" (cho bank)
+- Excel import/export dùng SheetJS ở frontend (tránh upload file lên server); server chỉ nhận JSON đã parse + re-validate
+- FILL_BLANK chấm so khớp case-insensitive + trim — lưu nhiều đáp án chấp nhận bằng nhiều option `isCorrect=true`
 
 ## LỆNH ĐÃ VERIFY Ở PHASE 09
 

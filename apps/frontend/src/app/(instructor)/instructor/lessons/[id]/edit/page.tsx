@@ -2,7 +2,7 @@
 
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from '@lms/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, Eye, History, Loader2, Save, Upload } from 'lucide-react';
+import { Archive, Eye, FileQuestion, History, Loader2, Save, Upload } from 'lucide-react';
 import Link from 'next/link';
 import { use, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -233,6 +233,12 @@ export default function LessonEditorPage({ params }: PageProps) {
             <p className="text-xs text-muted">ID: {lessonId}</p>
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="ghost" asChild>
+              <Link href={`/instructor/lessons/${lessonId}/quiz`}>
+                <FileQuestion className="h-4 w-4" />
+                Quiz
+              </Link>
+            </Button>
             <Button variant="ghost" asChild>
               <Link href={`/instructor/courses`}>
                 <Eye className="h-4 w-4" />

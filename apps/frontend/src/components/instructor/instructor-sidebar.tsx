@@ -1,7 +1,15 @@
 'use client';
 
 import { Sidebar, type SidebarItem } from '@lms/ui';
-import { BarChart3, BookOpen, LayoutDashboard, LayoutGrid, LogOut, Plus } from 'lucide-react';
+import {
+  BarChart3,
+  BookOpen,
+  HelpCircle,
+  LayoutDashboard,
+  LayoutGrid,
+  LogOut,
+  Plus,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useMemo } from 'react';
@@ -51,6 +59,12 @@ export function InstructorSidebar({ collapsed = false }: InstructorSidebarProps)
         href: '/instructor/courses/new',
         icon: Plus,
         active: isActive('/instructor/courses/new'),
+      },
+      {
+        label: 'Ngân hàng câu hỏi',
+        href: '/instructor/questions',
+        icon: HelpCircle,
+        active: isActive('/instructor/questions'),
       },
       {
         label: 'Analytics',

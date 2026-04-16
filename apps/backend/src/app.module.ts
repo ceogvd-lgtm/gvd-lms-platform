@@ -27,6 +27,8 @@ import { InstructorModule } from './modules/instructor/instructor.module';
 import { LessonsModule } from './modules/lessons/lessons.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PracticeContentsModule } from './modules/practice-contents/practice-contents.module';
+import { QuestionsModule } from './modules/questions/questions.module';
+import { QuizzesModule } from './modules/quizzes/quizzes.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { SubjectsModule } from './modules/subjects/subjects.module';
@@ -84,6 +86,9 @@ const monorepoRoot = join(__dirname, '..', '..', '..');
     InstructorModule,
     TheoryContentsModule,
     PracticeContentsModule,
+    // Phase 11
+    QuestionsModule,
+    QuizzesModule,
   ],
   controllers: [AppController],
   providers: [
