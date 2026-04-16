@@ -21,18 +21,24 @@ export const STORAGE_PREFIXES = {
 /**
  * Prefixes served via public-read bucket policy — no presigned URL needed.
  *
- * WebGL is public because Unity builds load their children (`Build/*.loader.js`,
- * `Build/*.wasm.gz`, `TemplateData/*.css`, …) via relative URLs from
- * `index.html`. A presigned URL only authorises the specific key it was
- * signed for, so the index would load but every child asset would 403.
- * Access control for practice lessons lives at the "who can start an
- * attempt" layer (see PracticeService.startAttempt ownership check) — not
- * at the static-asset layer. The serving bucket is isolated from user data.
+ * WebGL and SCORM are public because both are "extract-zip-and-serve-as-
+ * static-site" patterns. Their `index.html` / `imsmanifest.xml` reference
+ * children (`Build/*.loader.js`, `scormdriver.js`, `html5/data/css/*.css`,
+ * `story_content/*.js`, …) via relative URLs. A presigned URL only
+ * authorises the specific key it was signed for, so the index would load
+ * but every child asset would 403.
+ *
+ * Access control for these lessons lives at the "who can start an
+ * attempt / view a lesson" layer (see PracticeService.startAttempt
+ * ownership check, theoryContentsApi enrolment check) — not at the
+ * static-asset layer. The serving bucket is isolated from user data
+ * (no avatars/attachments under these prefixes).
  */
 export const PUBLIC_PREFIXES: readonly string[] = [
   STORAGE_PREFIXES.AVATARS,
   STORAGE_PREFIXES.THUMBNAILS,
   STORAGE_PREFIXES.WEBGL,
+  STORAGE_PREFIXES.SCORM,
 ];
 
 /** Size limits per upload type (bytes). */
