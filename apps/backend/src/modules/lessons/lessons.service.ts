@@ -294,6 +294,84 @@ export class LessonsService {
   }
 
   // =====================================================
+  // ATTACHMENTS (Phase 12) — read + create + delete.
+  //
+  // The raw file upload runs through /upload/attachment (Phase 06); this
+  // layer just records a row in LessonAttachment so the student page can
+  // list files per-lesson. Deletion is instructor-scoped to prevent a
+  // rogue STUDENT from nuking a lesson's resources.
+  // =====================================================
+  async listAttachments(lessonId: string): Promise<
+    Array<{
+      id: string;
+      lessonId: string;
+      fileName: string;
+      fileUrl: string;
+      fileSize: number;
+      mimeType: string;
+      createdAt: Date;
+    }>
+  > {
+    const lesson = await this.prisma.client.lesson.findUnique({
+      where: { id: lessonId },
+      select: { id: true, isDeleted: true },
+    });
+    if (!lesson || lesson.isDeleted) throw new NotFoundException('Không tìm thấy bài giảng');
+    const rows = await this.prisma.client.lessonAttachment.findMany({
+      where: { lessonId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      lessonId: r.lessonId,
+      fileName: r.fileName,
+      fileUrl: r.fileUrl,
+      fileSize: r.fileSize,
+      mimeType: r.mimeType,
+      createdAt: r.createdAt,
+    }));
+  }
+
+  async createAttachment(
+    actor: Actor,
+    lessonId: string,
+    payload: { fileName: string; fileUrl: string; fileSize: number; mimeType: string },
+  ) {
+    const lesson = await this.findLessonWithCourse(lessonId);
+    if (!lesson || lesson.isDeleted) throw new NotFoundException('Không tìm thấy bài giảng');
+    this.assertOwnership(actor, lesson.chapter.course.instructorId);
+
+    const row = await this.prisma.client.lessonAttachment.create({
+      data: { lessonId, ...payload },
+    });
+    return {
+      id: row.id,
+      lessonId: row.lessonId,
+      fileName: row.fileName,
+      fileUrl: row.fileUrl,
+      fileSize: row.fileSize,
+      mimeType: row.mimeType,
+      createdAt: row.createdAt,
+    };
+  }
+
+  async deleteAttachment(actor: Actor, lessonId: string, attachmentId: string) {
+    const lesson = await this.findLessonWithCourse(lessonId);
+    if (!lesson || lesson.isDeleted) throw new NotFoundException('Không tìm thấy bài giảng');
+    this.assertOwnership(actor, lesson.chapter.course.instructorId);
+
+    const existing = await this.prisma.client.lessonAttachment.findUnique({
+      where: { id: attachmentId },
+      select: { id: true, lessonId: true },
+    });
+    if (!existing || existing.lessonId !== lessonId) {
+      throw new NotFoundException('Không tìm thấy tài liệu');
+    }
+    await this.prisma.client.lessonAttachment.delete({ where: { id: attachmentId } });
+    return { message: 'Đã xoá tài liệu', id: attachmentId };
+  }
+
+  // =====================================================
   // GET student progress — bundles LessonProgress, VideoProgress, QuizAttempts
   //
   // Student-facing endpoint — callers always pass their own id, there's

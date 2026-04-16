@@ -81,6 +81,35 @@ export class LessonsController {
   progress(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     return this.lessons.getProgressForStudent(user.sub, id);
   }
+
+  // ---------- ATTACHMENTS (Phase 12) ----------
+  @Get('lessons/:id/attachments')
+  @Roles(Role.STUDENT, Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
+  listAttachments(@Param('id') id: string) {
+    return this.lessons.listAttachments(id);
+  }
+
+  @Post('lessons/:id/attachments')
+  @Roles(Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
+  @HttpCode(HttpStatus.CREATED)
+  createAttachment(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body()
+    body: { fileName: string; fileUrl: string; fileSize: number; mimeType: string },
+  ) {
+    return this.lessons.createAttachment({ id: user.sub, role: user.role }, id, body);
+  }
+
+  @Delete('lessons/:id/attachments/:attachmentId')
+  @Roles(Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
+  deleteAttachment(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Param('attachmentId') attachmentId: string,
+  ) {
+    return this.lessons.deleteAttachment({ id: user.sub, role: user.role }, id, attachmentId);
+  }
 }
 
 function getClientIp(req: Request): string {
