@@ -1,9 +1,17 @@
 import { ContentType, Role } from '@lms/database';
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 
 import { PrismaService } from '../../common/prisma/prisma.service';
+import type { ContentKind } from '../../common/storage/storage.constants';
+import { UploadService } from '../storage/upload.service';
 
 import { SaveBodyDto, UpsertTheoryDto } from './dto/upsert-theory.dto';
+import { PptConverterService, SlideDeck } from './ppt-converter.service';
 
 interface Actor {
   id: string;
@@ -30,7 +38,29 @@ export interface TheoryContentDto {
 }
 
 /**
- * CRUD for `TheoryContent` (Phase 10).
+ * Map the Phase 12 /upload endpoint's `kind` string to the existing
+ * {@link ContentKind} expected by {@link UploadService.uploadContent}.
+ *
+ * The frontend sends SCORM / XAPI / VIDEO / POWERPOINT — upload.service
+ * only knows SCORM / PPT / VIDEO / WEBGL. Both SCORM and xAPI are zip
+ * archives so we stash xAPI under the SCORM prefix (cheap — same MIME
+ * rules) and remember the logical type on `TheoryContent.contentType`.
+ */
+const UPLOAD_KIND_MAP: Record<'SCORM' | 'XAPI' | 'POWERPOINT' | 'VIDEO', ContentKind> = {
+  SCORM: 'SCORM',
+  XAPI: 'SCORM',
+  POWERPOINT: 'PPT',
+  VIDEO: 'VIDEO',
+};
+
+/**
+ * CRUD for `TheoryContent`.
+ *
+ * Phase 10 — base CRUD (findByLesson, upsert, saveBody).
+ * Phase 12 — content upload (SCORM/xAPI/PPT/VIDEO), PPT slide conversion,
+ *            slide retrieval, and lesson-completion check (invoked by
+ *            SCORM/xAPI/Video modules when their own completion criterion
+ *            fires).
  *
  * Ownership rule (mirrors LessonsService.assertOwnership Phase 04):
  *   - INSTRUCTOR may only touch theory content of lessons that belong
@@ -39,7 +69,11 @@ export interface TheoryContentDto {
  */
 @Injectable()
 export class TheoryContentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly uploads: UploadService,
+    private readonly pptConverter: PptConverterService,
+  ) {}
 
   // =====================================================
   // Helpers
@@ -59,6 +93,21 @@ export class TheoryContentsService {
       return;
     }
     throw new ForbiddenException('Bạn không có quyền với bài giảng này');
+  }
+
+  /**
+   * Permission check used by STUDENT-visible endpoints (slides, progress).
+   * Any authenticated user may read a published lesson's slides — the
+   * instructor ownership rule doesn't apply.
+   */
+  private async assertLessonExists(lessonId: string): Promise<void> {
+    const lesson = await this.prisma.client.lesson.findUnique({
+      where: { id: lessonId },
+      select: { id: true, isDeleted: true },
+    });
+    if (!lesson || lesson.isDeleted) {
+      throw new NotFoundException('Không tìm thấy bài giảng');
+    }
   }
 
   // =====================================================
@@ -121,5 +170,86 @@ export class TheoryContentsService {
         body: dto.body as never,
       },
     }) as Promise<TheoryContentDto>;
+  }
+
+  // =====================================================
+  // UPLOAD — Phase 12: upload a content payload and wire its URL to the
+  //   TheoryContent row. For SCORM and xAPI the controller is expected to
+  //   hand off to ScormService/XapiService next (which parse imsmanifest
+  //   / tincan.xml) — this method just does the raw upload + DB write.
+  // =====================================================
+  async uploadContent(
+    actor: Actor,
+    lessonId: string,
+    kind: 'SCORM' | 'XAPI' | 'POWERPOINT' | 'VIDEO',
+    file: Express.Multer.File,
+  ): Promise<{ content: TheoryContentDto; fileUrl: string; fileKey: string }> {
+    await this.assertLessonOwnership(actor, lessonId);
+
+    const mapped: ContentKind = UPLOAD_KIND_MAP[kind];
+    const result = await this.uploads.uploadContent(actor.id, mapped, lessonId, file);
+
+    // Map the logical kind to the DB enum. XAPI rides in a SCORM-shaped zip
+    // so storage-wise it's identical, but TheoryContent.contentType records
+    // the logical type so the student renderer picks the right component.
+    const contentType: ContentType =
+      kind === 'XAPI'
+        ? 'XAPI'
+        : kind === 'POWERPOINT'
+          ? 'POWERPOINT'
+          : kind === 'VIDEO'
+            ? 'VIDEO'
+            : 'SCORM';
+
+    const saved = (await this.prisma.client.theoryContent.upsert({
+      where: { lessonId },
+      update: {
+        contentType,
+        contentUrl: result.fileUrl,
+      },
+      create: {
+        lessonId,
+        overview: '',
+        objectives: [] as never,
+        contentType,
+        contentUrl: result.fileUrl,
+      },
+    })) as TheoryContentDto;
+
+    return { content: saved, fileUrl: result.fileUrl, fileKey: result.fileKey };
+  }
+
+  // =====================================================
+  // CONVERT PPT — rasterise uploaded .pptx into a slide deck. Delegated
+  //   to PptConverterService which handles both the happy LibreOffice
+  //   path and the fallback (no converter installed) case.
+  // =====================================================
+  async convertPpt(actor: Actor, lessonId: string, sourceKey: string): Promise<SlideDeck> {
+    await this.assertLessonOwnership(actor, lessonId);
+
+    if (!sourceKey.startsWith('content/ppt/')) {
+      throw new BadRequestException(
+        'sourceKey phải nằm trong content/ppt/ — hãy upload PPT qua endpoint /upload trước.',
+      );
+    }
+
+    try {
+      return await this.pptConverter.convert(lessonId, sourceKey);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Convert PPT thất bại';
+      if (msg.includes('not found in storage')) {
+        throw new NotFoundException(msg);
+      }
+      throw err;
+    }
+  }
+
+  // =====================================================
+  // GET SLIDES — any authenticated user may fetch the deck of a lesson
+  //   that has one. Returns null if the lesson has never been converted.
+  // =====================================================
+  async getSlides(lessonId: string): Promise<SlideDeck | null> {
+    await this.assertLessonExists(lessonId);
+    return this.pptConverter.getDeck(lessonId);
   }
 }

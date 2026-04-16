@@ -30,10 +30,13 @@ import { PracticeContentsModule } from './modules/practice-contents/practice-con
 import { QuestionsModule } from './modules/questions/questions.module';
 import { QuizzesModule } from './modules/quizzes/quizzes.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { ScormModule } from './modules/scorm/scorm.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { SubjectsModule } from './modules/subjects/subjects.module';
 import { SystemSettingsModule } from './modules/system-settings/system-settings.module';
 import { TheoryContentsModule } from './modules/theory-contents/theory-contents.module';
+import { VideoProgressModule } from './modules/video-progress/video-progress.module';
+import { XapiModule } from './modules/xapi/xapi.module';
 
 // The shared .env file lives at the monorepo root. At runtime the compiled
 // module sits in apps/backend/dist/, so we walk up three levels to reach it
@@ -89,6 +92,10 @@ const monorepoRoot = join(__dirname, '..', '..', '..');
     // Phase 11
     QuestionsModule,
     QuizzesModule,
+    // Phase 12
+    ScormModule,
+    XapiModule,
+    VideoProgressModule,
   ],
   controllers: [AppController],
   providers: [

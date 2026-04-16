@@ -7,6 +7,8 @@ import Link from 'next/link';
 import { use, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { AttachmentsManager } from '@/components/instructor/attachments-manager';
+import { ContentUploader } from '@/components/instructor/content-uploader';
 import { LessonTreeSidebar } from '@/components/instructor/lesson-tree-sidebar';
 import { RichTextEditor, type JSONContent } from '@/components/instructor/rich-text-editor';
 import { ApiError, practiceContentsApi, theoryContentsApi, uploadApi } from '@/lib/api';
@@ -254,12 +256,24 @@ export default function LessonEditorPage({ params }: PageProps) {
         </header>
 
         <main className="flex-1 overflow-y-auto bg-background px-6 py-4">
-          <Tabs defaultValue="theory">
+          <Tabs defaultValue="content">
             <TabsList>
+              <TabsTrigger value="content">Nội dung chính</TabsTrigger>
               <TabsTrigger value="theory">Lý thuyết</TabsTrigger>
+              <TabsTrigger value="attachments">Tài liệu</TabsTrigger>
               <TabsTrigger value="practice">Thực hành ảo</TabsTrigger>
               <TabsTrigger value="history">Lịch sử (10)</TabsTrigger>
             </TabsList>
+
+            {/* CONTENT — Phase 12 upload SCORM/xAPI/PPT/VIDEO */}
+            <TabsContent value="content">
+              <ContentUploader lessonId={lessonId} />
+            </TabsContent>
+
+            {/* ATTACHMENTS — Phase 12 PDF attachments */}
+            <TabsContent value="attachments">
+              <AttachmentsManager lessonId={lessonId} />
+            </TabsContent>
 
             {/* THEORY */}
             <TabsContent value="theory">

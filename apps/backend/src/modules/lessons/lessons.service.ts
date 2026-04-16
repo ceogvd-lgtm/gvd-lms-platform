@@ -1,5 +1,10 @@
-import { Role } from '@lms/types';
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ProgressStatus, Role } from '@lms/database';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -165,4 +170,291 @@ export class LessonsService {
 
     return { message: 'Đã xoá bài giảng', lesson: updated };
   }
+
+  // =====================================================
+  // STUDENT COMPLETION (Phase 12) — checks both content + quiz.
+  //
+  // A lesson is considered COMPLETED only when:
+  //   (a) the content itself is done — tracked by the content-type-specific
+  //       module (video → VideoProgress.isCompleted, SCORM/xAPI → a prior
+  //       call to /track persisted LessonProgress.status = COMPLETED,
+  //       PPT → the frontend signals "final slide reached" and hits this
+  //       endpoint once)
+  //   (b) if the lesson has a Quiz, the student has at least one
+  //       QuizAttempt with score >= passScore.
+  //
+  // If either condition fails we return the current LessonProgress
+  // unchanged — the frontend decides what to prompt the user next.
+  // =====================================================
+  async completeForStudent(studentId: string, lessonId: string) {
+    const lesson = await this.prisma.client.lesson.findUnique({
+      where: { id: lessonId },
+      select: {
+        id: true,
+        isDeleted: true,
+        theoryContent: {
+          select: {
+            id: true,
+            contentType: true,
+            completionThreshold: true,
+          },
+        },
+        quizzes: { select: { id: true, passScore: true } },
+      },
+    });
+    if (!lesson || lesson.isDeleted) {
+      throw new NotFoundException('Không tìm thấy bài giảng');
+    }
+
+    const now = new Date();
+    const contentDone = await this.isContentDone(studentId, lesson);
+    if (!contentDone) {
+      throw new BadRequestException(
+        'Phần nội dung chính chưa hoàn thành — xem/hoàn tất nội dung trước.',
+      );
+    }
+
+    // A lesson can have one quiz (schema: quizzes[] but we use at most one).
+    const quiz = lesson.quizzes[0];
+    if (quiz) {
+      const best = await this.prisma.client.quizAttempt.aggregate({
+        where: { quizId: quiz.id, studentId, completedAt: { not: null } },
+        _max: { score: true },
+      });
+      const bestScore = best._max.score ?? 0;
+      if (bestScore < quiz.passScore) {
+        throw new BadRequestException(
+          'Chưa đạt điểm pass của quiz — học viên cần làm bài kiểm tra trước.',
+        );
+      }
+    }
+
+    return this.prisma.client.lessonProgress.upsert({
+      where: { lessonId_studentId: { lessonId, studentId } },
+      update: {
+        status: ProgressStatus.COMPLETED,
+        completedAt: now,
+        lastViewAt: now,
+      },
+      create: {
+        lessonId,
+        studentId,
+        status: ProgressStatus.COMPLETED,
+        completedAt: now,
+        lastViewAt: now,
+      },
+    });
+  }
+
+  /**
+   * Determine if the lesson's *primary content* is done.
+   *
+   * The check is content-type-specific because each engine stores its
+   * own state:
+   *   - VIDEO → VideoProgress.isCompleted === true
+   *   - SCORM / XAPI / POWERPOINT / PDF → LessonProgress.status === COMPLETED
+   *     (those engines write COMPLETED to LessonProgress directly when
+   *     their own completion condition fires, so checking here is enough)
+   *   - Lessons with no theory yet → delegate to LessonProgress
+   */
+  private async isContentDone(
+    studentId: string,
+    lesson: {
+      id: string;
+      theoryContent: {
+        id: string;
+        contentType: string;
+        completionThreshold: number;
+      } | null;
+    },
+  ): Promise<boolean> {
+    if (!lesson.theoryContent) {
+      // No content ⇒ nothing to wait on.
+      return true;
+    }
+
+    if (lesson.theoryContent.contentType === 'VIDEO') {
+      const vp = await this.prisma.client.videoProgress.findUnique({
+        where: {
+          theoryContentId_studentId: {
+            theoryContentId: lesson.theoryContent.id,
+            studentId,
+          },
+        },
+        select: { isCompleted: true },
+      });
+      return vp?.isCompleted === true;
+    }
+
+    const lp = await this.prisma.client.lessonProgress.findUnique({
+      where: { lessonId_studentId: { lessonId: lesson.id, studentId } },
+      select: { status: true },
+    });
+    return lp?.status === ProgressStatus.COMPLETED;
+  }
+
+  // =====================================================
+  // ATTACHMENTS (Phase 12) — read + create + delete.
+  //
+  // The raw file upload runs through /upload/attachment (Phase 06); this
+  // layer just records a row in LessonAttachment so the student page can
+  // list files per-lesson. Deletion is instructor-scoped to prevent a
+  // rogue STUDENT from nuking a lesson's resources.
+  // =====================================================
+  async listAttachments(lessonId: string): Promise<
+    Array<{
+      id: string;
+      lessonId: string;
+      fileName: string;
+      fileUrl: string;
+      fileSize: number;
+      mimeType: string;
+      createdAt: Date;
+    }>
+  > {
+    const lesson = await this.prisma.client.lesson.findUnique({
+      where: { id: lessonId },
+      select: { id: true, isDeleted: true },
+    });
+    if (!lesson || lesson.isDeleted) throw new NotFoundException('Không tìm thấy bài giảng');
+    const rows = await this.prisma.client.lessonAttachment.findMany({
+      where: { lessonId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      lessonId: r.lessonId,
+      fileName: r.fileName,
+      fileUrl: r.fileUrl,
+      fileSize: r.fileSize,
+      mimeType: r.mimeType,
+      createdAt: r.createdAt,
+    }));
+  }
+
+  async createAttachment(
+    actor: Actor,
+    lessonId: string,
+    payload: { fileName: string; fileUrl: string; fileSize: number; mimeType: string },
+  ) {
+    const lesson = await this.findLessonWithCourse(lessonId);
+    if (!lesson || lesson.isDeleted) throw new NotFoundException('Không tìm thấy bài giảng');
+    this.assertOwnership(actor, lesson.chapter.course.instructorId);
+
+    const row = await this.prisma.client.lessonAttachment.create({
+      data: { lessonId, ...payload },
+    });
+    return {
+      id: row.id,
+      lessonId: row.lessonId,
+      fileName: row.fileName,
+      fileUrl: row.fileUrl,
+      fileSize: row.fileSize,
+      mimeType: row.mimeType,
+      createdAt: row.createdAt,
+    };
+  }
+
+  async deleteAttachment(actor: Actor, lessonId: string, attachmentId: string) {
+    const lesson = await this.findLessonWithCourse(lessonId);
+    if (!lesson || lesson.isDeleted) throw new NotFoundException('Không tìm thấy bài giảng');
+    this.assertOwnership(actor, lesson.chapter.course.instructorId);
+
+    const existing = await this.prisma.client.lessonAttachment.findUnique({
+      where: { id: attachmentId },
+      select: { id: true, lessonId: true },
+    });
+    if (!existing || existing.lessonId !== lessonId) {
+      throw new NotFoundException('Không tìm thấy tài liệu');
+    }
+    await this.prisma.client.lessonAttachment.delete({ where: { id: attachmentId } });
+    return { message: 'Đã xoá tài liệu', id: attachmentId };
+  }
+
+  // =====================================================
+  // GET student progress — bundles LessonProgress, VideoProgress, QuizAttempts
+  //
+  // Student-facing endpoint — callers always pass their own id, there's
+  // no cross-student lookup here. Instructors hit /instructor/analytics
+  // for broader views.
+  // =====================================================
+  async getProgressForStudent(studentId: string, lessonId: string): Promise<LessonStudentProgress> {
+    const lesson = await this.prisma.client.lesson.findUnique({
+      where: { id: lessonId },
+      select: { id: true, isDeleted: true, theoryContent: { select: { id: true } } },
+    });
+    if (!lesson || lesson.isDeleted) throw new NotFoundException('Không tìm thấy bài giảng');
+
+    const [progress, videoProgress, quizAttempts] = await Promise.all([
+      this.prisma.client.lessonProgress.findUnique({
+        where: { lessonId_studentId: { lessonId, studentId } },
+      }),
+      lesson.theoryContent
+        ? this.prisma.client.videoProgress.findUnique({
+            where: {
+              theoryContentId_studentId: {
+                theoryContentId: lesson.theoryContent.id,
+                studentId,
+              },
+            },
+          })
+        : Promise.resolve(null),
+      this.prisma.client.quizAttempt.findMany({
+        where: { studentId, quiz: { lessonId } },
+        orderBy: { startedAt: 'desc' },
+        take: 10,
+      }),
+    ]);
+
+    return {
+      progress: (progress ?? null) as unknown as LessonStudentProgress['progress'],
+      videoProgress: (videoProgress ?? null) as unknown as LessonStudentProgress['videoProgress'],
+      quizAttempts: quizAttempts as unknown as LessonStudentProgress['quizAttempts'],
+    };
+  }
+}
+
+// =====================================================
+// Response shapes for getProgressForStudent.
+// Explicit interfaces so emitted declarations don't reference internal
+// Prisma runtime types (non-portable — breaks tsc --noEmit).
+// =====================================================
+export interface LessonProgressRow {
+  id: string;
+  lessonId: string;
+  studentId: string;
+  status: ProgressStatus;
+  score: number | null;
+  timeSpent: number;
+  attempts: number;
+  lastViewAt: Date;
+  completedAt: Date | null;
+}
+
+export interface VideoProgressRow {
+  id: string;
+  theoryContentId: string;
+  studentId: string;
+  watchedSeconds: number;
+  duration: number;
+  lastPosition: number;
+  isCompleted: boolean;
+  updatedAt: Date;
+}
+
+export interface QuizAttemptRow {
+  id: string;
+  quizId: string;
+  studentId: string;
+  score: number;
+  maxScore: number;
+  answers: unknown;
+  startedAt: Date;
+  completedAt: Date | null;
+}
+
+export interface LessonStudentProgress {
+  progress: LessonProgressRow | null;
+  videoProgress: VideoProgressRow | null;
+  quizAttempts: QuizAttemptRow[];
 }

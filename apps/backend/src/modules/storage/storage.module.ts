@@ -18,5 +18,6 @@ import { WebglExtractProcessor } from './webgl-extract.processor';
   imports: [BullModule.registerQueue({ name: WEBGL_EXTRACT_QUEUE })],
   controllers: [StorageController],
   providers: [UploadService, WebglExtractProcessor],
+  exports: [UploadService],
 })
 export class StorageModule {}

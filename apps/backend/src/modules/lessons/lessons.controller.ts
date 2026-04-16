@@ -4,6 +4,7 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -64,6 +65,50 @@ export class LessonsController {
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   softDelete(@CurrentUser() user: JwtPayload, @Param('id') id: string, @Req() req: Request) {
     return this.lessons.softDelete({ id: user.sub, role: user.role }, id, { ip: getClientIp(req) });
+  }
+
+  // ---------- STUDENT COMPLETE (Phase 12) ----------
+  @Post('lessons/:id/complete')
+  @Roles(Role.STUDENT, Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  complete(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.lessons.completeForStudent(user.sub, id);
+  }
+
+  // ---------- STUDENT PROGRESS (Phase 12) ----------
+  @Get('lessons/:id/progress')
+  @Roles(Role.STUDENT, Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
+  progress(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.lessons.getProgressForStudent(user.sub, id);
+  }
+
+  // ---------- ATTACHMENTS (Phase 12) ----------
+  @Get('lessons/:id/attachments')
+  @Roles(Role.STUDENT, Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
+  listAttachments(@Param('id') id: string) {
+    return this.lessons.listAttachments(id);
+  }
+
+  @Post('lessons/:id/attachments')
+  @Roles(Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
+  @HttpCode(HttpStatus.CREATED)
+  createAttachment(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body()
+    body: { fileName: string; fileUrl: string; fileSize: number; mimeType: string },
+  ) {
+    return this.lessons.createAttachment({ id: user.sub, role: user.role }, id, body);
+  }
+
+  @Delete('lessons/:id/attachments/:attachmentId')
+  @Roles(Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
+  deleteAttachment(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Param('attachmentId') attachmentId: string,
+  ) {
+    return this.lessons.deleteAttachment({ id: user.sub, role: user.role }, id, attachmentId);
   }
 }
 
