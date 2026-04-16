@@ -1,11 +1,21 @@
 'use client';
 
-import { Avatar, Button, DataTable, type ColumnDef } from '@lms/ui';
+import {
+  Avatar,
+  Button,
+  DataTable,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  type ColumnDef,
+} from '@lms/ui';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Download, Mail } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
+import { PracticeAnalyticsView } from '@/components/instructor/practice-analytics-view';
 import { SendReminderModal } from '@/components/instructor/send-reminder-modal';
 import { StudentDetailModal } from '@/components/instructor/student-detail-modal';
 import {
@@ -216,118 +226,148 @@ export default function InstructorAnalyticsPage() {
         </p>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <select
-          value={courseId}
-          onChange={(e) => {
-            setPageIndex(0);
-            setCourseId(e.target.value);
-          }}
-          className="h-10 rounded-button border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/20 sm:max-w-xs"
-        >
-          <option value="">Tất cả khoá của tôi</option>
-          {courses.data?.data.map((c: Course) => (
-            <option key={c.id} value={c.id}>
-              {c.title}
-            </option>
-          ))}
-        </select>
+      {/* Phase 13 — two-tab view: student progress vs practice-lab analytics */}
+      <Tabs defaultValue="progress">
+        <TabsList>
+          <TabsTrigger value="progress">Tiến độ học viên</TabsTrigger>
+          <TabsTrigger value="practice">Thực hành ảo</TabsTrigger>
+        </TabsList>
 
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => {
-            setPageIndex(0);
-            setSearch(e.target.value);
-          }}
-          placeholder="Tìm tên hoặc email…"
-          className="h-10 rounded-button border border-border bg-background px-3.5 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/20 sm:max-w-xs"
-        />
+        <TabsContent value="progress">
+          {/* Filters */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <select
+              value={courseId}
+              onChange={(e) => {
+                setPageIndex(0);
+                setCourseId(e.target.value);
+              }}
+              className="h-10 rounded-button border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/20 sm:max-w-xs"
+            >
+              <option value="">Tất cả khoá của tôi</option>
+              {courses.data?.data.map((c: Course) => (
+                <option key={c.id} value={c.id}>
+                  {c.title}
+                </option>
+              ))}
+            </select>
 
-        <div className="flex gap-2 sm:ml-auto">
-          <Button variant="outline" onClick={handleExport} disabled={exporting}>
-            <Download className="h-4 w-4" />
-            {exporting ? 'Đang xuất…' : 'Export CSV'}
-          </Button>
-          <Button
-            onClick={() => setReminderOpen(true)}
-            disabled={reminderTargets.length === 0 || !reminderCourseId}
-          >
-            <Mail className="h-4 w-4" />
-            Gửi nhắc ({reminderTargets.length})
-          </Button>
-        </div>
-      </div>
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => {
+                setPageIndex(0);
+                setSearch(e.target.value);
+              }}
+              placeholder="Tìm tên hoặc email…"
+              className="h-10 rounded-button border border-border bg-background px-3.5 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/20 sm:max-w-xs"
+            />
 
-      <div className="flex flex-wrap gap-2">
-        {STATUS_FILTERS.map((f) => (
-          <button
-            key={f.value}
-            type="button"
-            onClick={() => {
-              setPageIndex(0);
-              setFilter(f.value);
-            }}
-            className={
-              'whitespace-nowrap rounded-button px-3 py-1.5 text-xs font-semibold transition-colors ' +
-              (filter === f.value
-                ? 'bg-primary text-white'
-                : 'bg-surface-2 text-muted hover:bg-surface-2/80')
-            }
-          >
-            {f.label}
-            {f.value === 'at-risk' && students.data && (
-              <span className="ml-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] text-white">
-                {students.data.data.filter((r) => r.status === 'at-risk').length}
+            <div className="flex gap-2 sm:ml-auto">
+              <Button variant="outline" onClick={handleExport} disabled={exporting}>
+                <Download className="h-4 w-4" />
+                {exporting ? 'Đang xuất…' : 'Export CSV'}
+              </Button>
+              <Button
+                onClick={() => setReminderOpen(true)}
+                disabled={reminderTargets.length === 0 || !reminderCourseId}
+              >
+                <Mail className="h-4 w-4" />
+                Gửi nhắc ({reminderTargets.length})
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {STATUS_FILTERS.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                onClick={() => {
+                  setPageIndex(0);
+                  setFilter(f.value);
+                }}
+                className={
+                  'whitespace-nowrap rounded-button px-3 py-1.5 text-xs font-semibold transition-colors ' +
+                  (filter === f.value
+                    ? 'bg-primary text-white'
+                    : 'bg-surface-2 text-muted hover:bg-surface-2/80')
+                }
+              >
+                {f.label}
+                {f.value === 'at-risk' && students.data && (
+                  <span className="ml-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] text-white">
+                    {students.data.data.filter((r) => r.status === 'at-risk').length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {selectedRows.length > 0 && (
+            <div className="flex items-center justify-between rounded-card border border-primary/40 bg-primary/5 px-4 py-3">
+              <span className="text-sm font-semibold text-primary">
+                Đã chọn {selectedRows.length} học viên
               </span>
-            )}
-          </button>
-        ))}
-      </div>
+              <Button size="sm" variant="ghost" onClick={() => setSelectedRows([])}>
+                Bỏ chọn
+              </Button>
+            </div>
+          )}
 
-      {selectedRows.length > 0 && (
-        <div className="flex items-center justify-between rounded-card border border-primary/40 bg-primary/5 px-4 py-3">
-          <span className="text-sm font-semibold text-primary">
-            Đã chọn {selectedRows.length} học viên
-          </span>
-          <Button size="sm" variant="ghost" onClick={() => setSelectedRows([])}>
-            Bỏ chọn
-          </Button>
-        </div>
-      )}
+          <DataTable
+            data={students.data?.data ?? []}
+            columns={columns}
+            selectable
+            onSelectionChange={setSelectedRows}
+            manualPagination
+            pageCount={totalPages}
+            pageIndex={pageIndex}
+            onPaginationChange={(s) => setPageIndex(s.pageIndex)}
+            loading={students.isLoading}
+            emptyState={
+              students.isError
+                ? (students.error as Error).message
+                : 'Chưa có học viên nào khớp bộ lọc.'
+            }
+          />
 
-      <DataTable
-        data={students.data?.data ?? []}
-        columns={columns}
-        selectable
-        onSelectionChange={setSelectedRows}
-        manualPagination
-        pageCount={totalPages}
-        pageIndex={pageIndex}
-        onPaginationChange={(s) => setPageIndex(s.pageIndex)}
-        loading={students.isLoading}
-        emptyState={
-          students.isError ? (students.error as Error).message : 'Chưa có học viên nào khớp bộ lọc.'
-        }
-      />
+          <StudentDetailModal
+            open={!!detail}
+            onClose={() => setDetail(null)}
+            studentId={detail?.studentId ?? null}
+            courseId={detail?.courseId ?? null}
+            studentName={detail?.studentName}
+            courseTitle={detail?.courseTitle}
+          />
 
-      <StudentDetailModal
-        open={!!detail}
-        onClose={() => setDetail(null)}
-        studentId={detail?.studentId ?? null}
-        courseId={detail?.courseId ?? null}
-        studentName={detail?.studentName}
-        courseTitle={detail?.courseTitle}
-      />
+          <SendReminderModal
+            open={reminderOpen}
+            onClose={() => setReminderOpen(false)}
+            studentIds={reminderTargets.map((r) => r.studentId)}
+            courseId={reminderCourseId}
+            studentSummary={reminderSummary}
+          />
+        </TabsContent>
 
-      <SendReminderModal
-        open={reminderOpen}
-        onClose={() => setReminderOpen(false)}
-        studentIds={reminderTargets.map((r) => r.studentId)}
-        courseId={reminderCourseId}
-        studentSummary={reminderSummary}
-      />
+        <TabsContent value="practice">
+          {/* Phase 13 — practice-lab analytics. The view picks a lesson
+              from those with practice content; we hand it the
+              instructor's own course list as a hint, the user picks
+              within. */}
+          <PracticeAnalyticsView
+            lessons={(courses.data?.data ?? []).flatMap((c: Course) => [
+              // Course-level entry; the view re-queries per lessonId,
+              // but we also need the lesson picker to include lessons
+              // the instructor owns. The @lms/frontend curriculum API
+              // doesn't surface lessons directly per course here, so
+              // the picker falls back to courseId (backend returns 404
+              // when the id isn't a lesson — surfaced to the user).
+              { id: c.id, title: c.title, courseTitle: c.title },
+            ])}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

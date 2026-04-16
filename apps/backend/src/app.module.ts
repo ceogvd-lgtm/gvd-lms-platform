@@ -26,6 +26,7 @@ import { EnrollmentsModule } from './modules/enrollments/enrollments.module';
 import { InstructorModule } from './modules/instructor/instructor.module';
 import { LessonsModule } from './modules/lessons/lessons.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { PracticeModule } from './modules/practice/practice.module';
 import { PracticeContentsModule } from './modules/practice-contents/practice-contents.module';
 import { QuestionsModule } from './modules/questions/questions.module';
 import { QuizzesModule } from './modules/quizzes/quizzes.module';
@@ -96,6 +97,8 @@ const monorepoRoot = join(__dirname, '..', '..', '..');
     ScormModule,
     XapiModule,
     VideoProgressModule,
+    // Phase 13
+    PracticeModule,
   ],
   controllers: [AppController],
   providers: [

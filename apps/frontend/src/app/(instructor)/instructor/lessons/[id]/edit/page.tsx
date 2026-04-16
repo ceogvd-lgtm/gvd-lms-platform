@@ -1,8 +1,8 @@
 'use client';
 
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from '@lms/ui';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, Eye, FileQuestion, History, Loader2, Save, Upload } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Archive, Eye, FileQuestion, History, Loader2, Save } from 'lucide-react';
 import Link from 'next/link';
 import { use, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -10,8 +10,9 @@ import { toast } from 'sonner';
 import { AttachmentsManager } from '@/components/instructor/attachments-manager';
 import { ContentUploader } from '@/components/instructor/content-uploader';
 import { LessonTreeSidebar } from '@/components/instructor/lesson-tree-sidebar';
+import { PracticeContentEditor } from '@/components/instructor/practice-content-editor';
 import { RichTextEditor, type JSONContent } from '@/components/instructor/rich-text-editor';
-import { ApiError, practiceContentsApi, theoryContentsApi, uploadApi } from '@/lib/api';
+import { ApiError, theoryContentsApi } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { chaptersApi, lessonsApi } from '@/lib/curriculum';
 
@@ -39,7 +40,6 @@ interface PageProps {
 export default function LessonEditorPage({ params }: PageProps) {
   const { id: lessonId } = use(params);
   const accessToken = useAuthStore((s) => s.accessToken);
-  const qc = useQueryClient();
 
   // Lesson + parent chapter (so we can render the tree on the left).
   const lesson = useQuery({
@@ -114,76 +114,9 @@ export default function LessonEditorPage({ params }: PageProps) {
     }
   };
 
-  // ---- Practice state ----
-  const practiceQuery = useQuery({
-    queryKey: ['practice', lessonId],
-    queryFn: () => practiceContentsApi.get(lessonId, accessToken!),
-    enabled: !!accessToken,
-  });
-
-  const [practiceForm, setPracticeForm] = useState<{
-    introduction: string;
-    webglUrl: string;
-    passScore: number;
-    timeLimit: number;
-    maxAttempts: number;
-  }>({ introduction: '', webglUrl: '', passScore: 70, timeLimit: 600, maxAttempts: 3 });
-  const [savingPractice, setSavingPractice] = useState(false);
-  const [uploadingWebgl, setUploadingWebgl] = useState(false);
-
-  useEffect(() => {
-    if (practiceQuery.data) {
-      const p = practiceQuery.data;
-      setPracticeForm({
-        introduction: p.introduction,
-        webglUrl: p.webglUrl,
-        passScore: p.passScore,
-        timeLimit: p.timeLimit ?? 600,
-        maxAttempts: p.maxAttempts ?? 3,
-      });
-    }
-  }, [practiceQuery.data]);
-
-  const handlePracticeSave = async () => {
-    setSavingPractice(true);
-    try {
-      await practiceContentsApi.upsert(
-        lessonId,
-        {
-          introduction: practiceForm.introduction,
-          objectives: [],
-          webglUrl: practiceForm.webglUrl,
-          scoringConfig: {},
-          safetyChecklist: {},
-          passScore: practiceForm.passScore,
-          timeLimit: practiceForm.timeLimit,
-          maxAttempts: practiceForm.maxAttempts,
-        },
-        accessToken!,
-      );
-      toast.success('Đã lưu nội dung thực hành');
-      qc.invalidateQueries({ queryKey: ['practice', lessonId] });
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'Lưu thất bại';
-      toast.error(msg);
-    } finally {
-      setSavingPractice(false);
-    }
-  };
-
-  const handleWebglUpload = async (file: File) => {
-    setUploadingWebgl(true);
-    try {
-      const result = await uploadApi.content(file, 'WEBGL', lessonId, accessToken!);
-      setPracticeForm((p) => ({ ...p, webglUrl: result.url }));
-      toast.success('Đã upload bundle WebGL');
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'Upload thất bại';
-      toast.error(msg);
-    } finally {
-      setUploadingWebgl(false);
-    }
-  };
+  // Phase-13 note: the Practice tab is now self-contained (see
+  // PracticeContentEditor). It owns its own useQuery + mutation — this
+  // page no longer tracks practice form state.
 
   // ---- Lesson archive (soft archive via isPublished=false) ----
   const handleArchive = async () => {
@@ -291,111 +224,9 @@ export default function LessonEditorPage({ params }: PageProps) {
               </div>
             </TabsContent>
 
-            {/* PRACTICE */}
+            {/* PRACTICE — Phase 13 new editor replaces the Phase 10 stub */}
             <TabsContent value="practice">
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium" htmlFor="practice-intro">
-                    Giới thiệu
-                  </label>
-                  <textarea
-                    id="practice-intro"
-                    rows={3}
-                    value={practiceForm.introduction}
-                    onChange={(e) =>
-                      setPracticeForm((p) => ({ ...p, introduction: e.target.value }))
-                    }
-                    className="w-full rounded-button border border-border bg-background px-3.5 py-2 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/20"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="webgl-upload" className="mb-1.5 block text-sm font-medium">
-                    File WebGL (Unity bundle)
-                  </label>
-                  <div className="flex items-center gap-3">
-                    {practiceForm.webglUrl && (
-                      <code className="rounded bg-surface-2 px-2 py-1 text-xs">
-                        {practiceForm.webglUrl.split('/').pop() ?? practiceForm.webglUrl}
-                      </code>
-                    )}
-                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-button border border-dashed border-border px-3 py-2 text-sm hover:border-primary">
-                      <Upload className="h-4 w-4" />
-                      {uploadingWebgl
-                        ? 'Đang upload…'
-                        : practiceForm.webglUrl
-                          ? 'Đổi file'
-                          : 'Chọn file'}
-                      <input
-                        id="webgl-upload"
-                        type="file"
-                        className="hidden"
-                        accept=".unityweb,.zip"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) handleWebglUpload(f);
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                  <div>
-                    <label htmlFor="passScore" className="mb-1.5 block text-sm font-medium">
-                      Điểm đạt (%)
-                    </label>
-                    <input
-                      id="passScore"
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={practiceForm.passScore}
-                      onChange={(e) =>
-                        setPracticeForm((p) => ({ ...p, passScore: Number(e.target.value) }))
-                      }
-                      className="h-10 w-full rounded-button border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/20"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="timeLimit" className="mb-1.5 block text-sm font-medium">
-                      Thời gian (giây)
-                    </label>
-                    <input
-                      id="timeLimit"
-                      type="number"
-                      min={0}
-                      value={practiceForm.timeLimit}
-                      onChange={(e) =>
-                        setPracticeForm((p) => ({ ...p, timeLimit: Number(e.target.value) }))
-                      }
-                      className="h-10 w-full rounded-button border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/20"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="maxAttempts" className="mb-1.5 block text-sm font-medium">
-                      Số lần thử tối đa
-                    </label>
-                    <input
-                      id="maxAttempts"
-                      type="number"
-                      min={1}
-                      value={practiceForm.maxAttempts}
-                      onChange={(e) =>
-                        setPracticeForm((p) => ({ ...p, maxAttempts: Number(e.target.value) }))
-                      }
-                      className="h-10 w-full rounded-button border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/20"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end">
-                  <Button onClick={handlePracticeSave} disabled={savingPractice}>
-                    <Save className="h-4 w-4" />
-                    {savingPractice ? 'Đang lưu…' : 'Lưu nội dung thực hành'}
-                  </Button>
-                </div>
-              </div>
+              <PracticeContentEditor lessonId={lessonId} />
             </TabsContent>
 
             {/* HISTORY (stub) */}
