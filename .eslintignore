@@ -4,3 +4,9 @@
 **/node_modules/**
 **/coverage/**
 **/.turbo/**
+
+# Third-party static JS served directly from apps/frontend/public/ —
+# we ship scorm-again.min.js verbatim so runtime SCORM packages can
+# find it at /scorm-again.min.js. Don't lint vendored code.
+apps/frontend/public/**/*.js
+apps/frontend/public/**/*.min.js
