@@ -1,10 +1,10 @@
 # CONTEXT.md — Dự Án LMS
 
-Cập nhật ngày: 15/04/2026
+Cập nhật ngày: 16/04/2026
 
 ## ĐANG LÀM
 
-Phase 10 — (TBD)
+Phase 11 — (TBD)
 
 ## ĐÃ HOÀN THÀNH
 
@@ -93,7 +93,30 @@ Phase 10 — (TBD)
   - Frontend: `UserActionButton` + `checkAdminRules()` disable + tooltip (không hide)
   - Settings page read-only cho ADMIN với warning banner
 - **Audit actions mới**: CONTENT_APPROVE/REJECT/DELETE/FLAG_LESSON, CERTIFICATE_REVOKE, SYSTEM_SETTING_UPDATE, SYSTEM_BACKUP_TRIGGER
-- Xong ngày: 15/04/2026
+- **Hydration fix**: `useHasHydrated()` hook (lib/auth-store.ts) — dùng cho admin/instructor layout để tránh redirect-flash khi reload
+- Commit: 1ac1292 | Xong ngày: 16/04/2026
+
+### ✅ Phase 10 — Instructor Dashboard
+
+- **Database**: thêm field `body Json?` vào TheoryContent (TipTap JSON ProseMirror), migration 20260416120000
+- **Backend modules mới** (~14 endpoints):
+  - `instructor/dashboard` — 4 endpoints (stats, weekly-progress, activity, deadlines) **scoped `course.instructorId === actor.id`**
+  - `instructor/analytics` — 4 endpoints (list students, detail, export CSV, send-reminder qua EmailService Phase 07)
+  - `theory-contents` — 3 endpoints (GET, PUT upsert, PATCH body cho auto-save)
+  - `practice-contents` — 2 endpoints (GET, PUT upsert)
+- **At-risk definition**: progress < 30% AND lastActiveAt > 7 ngày AND completedAt = null
+- **4 unit test mới**: instructor/dashboard, instructor/analytics, theory-contents, practice-contents — tất cả PASS (13 suites, 128 tests)
+- **Frontend TipTap** cài 7 packages (@tiptap/react, pm, starter-kit, placeholder, link, image, underline)
+- **Instructor layout mới**: blue navy + amber accent, useHasHydrated() guard role INSTRUCTOR+
+- **5 trang instructor mới**:
+  - `/instructor/dashboard` — 4 KPI + line chart 8 tuần + activity feed + deadlines panel
+  - `/instructor/courses` — Grid/List view toggle + filter status + search realtime, KHÔNG có nút Xoá
+  - `/instructor/courses/new` — Wizard 4 bước (info / structure dnd-kit / settings stub / preview), auto-save 30s
+  - `/instructor/lessons/[id]/edit` — TipTap editor + tabs Theory/Practice/History stub, floating save status, KHÔNG có nút Xoá
+  - `/instructor/analytics` — DataTable server-side với conditional formatting, modal chi tiết, export CSV, send reminder modal
+- **4 Luật giữ nguyên**: INSTRUCTOR pages KHÔNG render bất kỳ button "Xoá" nào (UI level), backend `LessonsService.softDelete` vẫn enforce ADMIN+ only
+- **Audit action mới**: INSTRUCTOR_SEND_REMINDER (gửi email at-risk-alert tới học viên nguy cơ)
+- Xong ngày: 16/04/2026
 
 ## LƯU Ý QUAN TRỌNG
 
@@ -107,6 +130,11 @@ Phase 10 — (TBD)
 - DataTable từ @lms/ui dùng TanStack Table v8, hỗ trợ cả client-side (default) và server-side mode
 - pdfmake render với font Roboto (Unicode VN hoạt động tốt)
 - Phase 09 backup chỉ ở chế độ stub — Phase 18 (Deploy) sẽ implement pg_dump + MinIO thật
+- INSTRUCTOR: Tạo + Sửa + Lưu trữ — TUYỆT ĐỐI KHÔNG có nút Xoá ở UI, backend cũng từ chối (Phase 04)
+- Hydration: layout admin/instructor dùng `useHasHydrated()` (auth-store.ts) trước khi check role
+- TipTap body lưu JSON ProseMirror trong `TheoryContent.body` — auto-save 30s qua `PATCH /lessons/:id/theory/body`
+- Lesson revision history Phase 10 chỉ stub UI — Phase 11 sẽ thêm LessonRevision model
+- Instructor analytics gửi email "nhắc học" qua `EmailService.sendAtRiskAlert` (template Phase 07)
 
 ## LỆNH ĐÃ VERIFY Ở PHASE 09
 

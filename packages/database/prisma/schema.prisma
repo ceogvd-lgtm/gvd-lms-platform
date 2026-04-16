@@ -227,6 +227,10 @@ model TheoryContent {
   contentUrl          String
   duration            Int?
   completionThreshold Float       @default(0.8)
+  // Phase 10: TipTap JSON ProseMirror document for the rich-text body
+  // shown alongside the uploaded SCORM/Video/PDF. Nullable for backward
+  // compat with legacy theory contents that only had a contentUrl.
+  body                Json?
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 

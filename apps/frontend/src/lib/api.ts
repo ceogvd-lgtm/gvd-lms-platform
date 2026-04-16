@@ -717,3 +717,249 @@ export function triggerBlobDownload(blob: Blob, filename: string): void {
   // Defer revoke so Safari / Firefox have time to initiate the download.
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+// =====================================================
+// Instructor Dashboard API (Phase 10)
+// =====================================================
+
+export interface InstructorStats {
+  totalCourses: number;
+  activeStudents: number;
+  completionRate: number;
+  avgScore: number;
+}
+
+export interface WeeklyProgressPoint {
+  week: string;
+  count: number;
+}
+
+export interface InstructorActivityItem {
+  id: string;
+  type: 'ENROLL' | 'COMPLETE_LESSON' | 'QUIZ';
+  studentId: string;
+  studentName: string;
+  studentAvatar: string | null;
+  target: string;
+  score: number | null;
+  timestamp: string;
+}
+
+export interface InstructorDeadlineItem {
+  enrollmentId: string;
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  studentAvatar: string | null;
+  courseId: string;
+  courseTitle: string;
+  enrolledAt: string;
+  daysOverdue: number;
+}
+
+export const instructorDashboardApi = {
+  getStats: (token: string) => api<InstructorStats>('/instructor/dashboard/stats', { token }),
+  getWeeklyProgress: (weeks: number, token: string) =>
+    api<{ points: WeeklyProgressPoint[] }>(`/instructor/dashboard/weekly-progress?weeks=${weeks}`, {
+      token,
+    }),
+  getActivity: (limit: number, token: string) =>
+    api<{ items: InstructorActivityItem[] }>(`/instructor/dashboard/activity?limit=${limit}`, {
+      token,
+    }),
+  getDeadlines: (days: number, token: string) =>
+    api<{ items: InstructorDeadlineItem[] }>(`/instructor/dashboard/deadlines?days=${days}`, {
+      token,
+    }),
+};
+
+// =====================================================
+// Instructor Analytics API (Phase 10)
+// =====================================================
+
+export type StudentStatus = 'at-risk' | 'in-progress' | 'completed' | 'not-started';
+
+export interface AnalyticsStudentRow {
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  studentAvatar: string | null;
+  courseId: string;
+  courseTitle: string;
+  enrolledAt: string;
+  completedAt: string | null;
+  progressPercent: number;
+  avgScore: number | null;
+  lastActiveAt: string | null;
+  status: StudentStatus;
+}
+
+export interface AnalyticsStudentDetail {
+  enrollment: { enrolledAt: string; completedAt: string | null };
+  student: { id: string; name: string; email: string; avatar: string | null };
+  course: { id: string; title: string };
+  lessons: Array<{
+    lessonId: string;
+    lessonTitle: string;
+    lessonType: 'THEORY' | 'PRACTICE';
+    chapterTitle: string;
+    chapterOrder: number;
+    status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
+    score: number | null;
+    timeSpentSec: number;
+    attempts: number;
+    completedAt: string | null;
+  }>;
+}
+
+export const instructorAnalyticsApi = {
+  listStudents: (
+    params: {
+      courseId?: string;
+      filter?: StudentStatus | 'all';
+      q?: string;
+      page?: number;
+      limit?: number;
+    },
+    token: string,
+  ) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== '') qs.set(k, String(v));
+    });
+    const q = qs.toString();
+    return api<Paginated<AnalyticsStudentRow>>(
+      `/instructor/analytics/students${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  getStudentDetail: (studentId: string, courseId: string, token: string) =>
+    api<AnalyticsStudentDetail>(`/instructor/analytics/students/${studentId}/courses/${courseId}`, {
+      token,
+    }),
+
+  exportCsv: (params: { courseId?: string; filter?: StudentStatus | 'all' }, token: string) => {
+    const qs = new URLSearchParams({ format: 'csv' });
+    if (params.courseId) qs.set('courseId', params.courseId);
+    if (params.filter) qs.set('filter', params.filter);
+    return downloadBlob(`/instructor/analytics/students/export?${qs.toString()}`, token);
+  },
+
+  sendReminder: (
+    body: { studentIds: string[]; courseId: string; message?: string },
+    token: string,
+  ) =>
+    api<{ sent: string[]; failed: Array<{ studentId: string; reason: string }>; total: number }>(
+      '/instructor/analytics/remind',
+      { method: 'POST', body, token },
+    ),
+};
+
+// =====================================================
+// Theory + Practice content APIs (Phase 10)
+// =====================================================
+
+export interface TheoryContent {
+  id: string;
+  lessonId: string;
+  overview: string;
+  objectives: unknown;
+  contentType: 'SCORM' | 'XAPI' | 'POWERPOINT' | 'VIDEO' | 'PDF' | 'WEBGL';
+  contentUrl: string;
+  duration: number | null;
+  completionThreshold: number;
+  body: unknown;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PracticeContent {
+  id: string;
+  lessonId: string;
+  introduction: string;
+  objectives: unknown;
+  webglUrl: string;
+  scoringConfig: unknown;
+  safetyChecklist: unknown;
+  passScore: number;
+  timeLimit: number | null;
+  maxAttempts: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const theoryContentsApi = {
+  get: (lessonId: string, token: string) =>
+    api<TheoryContent | null>(`/lessons/${lessonId}/theory`, { token }),
+
+  upsert: (
+    lessonId: string,
+    body: Omit<TheoryContent, 'id' | 'lessonId' | 'createdAt' | 'updatedAt'>,
+    token: string,
+  ) => api<TheoryContent>(`/lessons/${lessonId}/theory`, { method: 'PUT', body, token }),
+
+  saveBody: (lessonId: string, body: unknown, token: string) =>
+    api<TheoryContent>(`/lessons/${lessonId}/theory/body`, {
+      method: 'PATCH',
+      body: { body },
+      token,
+    }),
+};
+
+export const practiceContentsApi = {
+  get: (lessonId: string, token: string) =>
+    api<PracticeContent | null>(`/lessons/${lessonId}/practice`, { token }),
+
+  upsert: (
+    lessonId: string,
+    body: Omit<PracticeContent, 'id' | 'lessonId' | 'createdAt' | 'updatedAt'>,
+    token: string,
+  ) => api<PracticeContent>(`/lessons/${lessonId}/practice`, { method: 'PUT', body, token }),
+};
+
+// =====================================================
+// File upload helpers (Phase 06 endpoints, used by Phase 10 wizard + editor)
+// =====================================================
+
+export interface UploadedFile {
+  url: string;
+  key: string;
+  size: number;
+  mimeType: string;
+}
+
+async function uploadMultipart(
+  path: string,
+  file: File,
+  token: string,
+  extraFields: Record<string, string> = {},
+): Promise<UploadedFile> {
+  const form = new FormData();
+  form.append('file', file);
+  for (const [k, v] of Object.entries(extraFields)) form.append(k, v);
+
+  const res = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: form,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(res.status, text || `Upload failed (${res.status})`);
+  }
+  return res.json();
+}
+
+export const uploadApi = {
+  thumbnail: (file: File, token: string) => uploadMultipart('/upload/thumbnail', file, token),
+
+  content: (
+    file: File,
+    contentType: 'SCORM' | 'XAPI' | 'POWERPOINT' | 'VIDEO' | 'PDF' | 'WEBGL',
+    lessonId: string,
+    token: string,
+  ) => uploadMultipart('/upload/content', file, token, { contentType, lessonId }),
+
+  attachment: (file: File, token: string) => uploadMultipart('/upload/attachment', file, token),
+};

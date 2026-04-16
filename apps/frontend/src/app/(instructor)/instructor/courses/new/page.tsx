@@ -1,0 +1,787 @@
+'use client';
+
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { Button, Card, CardContent } from '@lms/ui';
+import { useQuery } from '@tanstack/react-query';
+import { ChevronLeft, ChevronRight, GripVertical, Plus, Save, Send, Upload } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
+
+import { Stepper } from '@/components/instructor/stepper';
+import { ApiError, uploadApi } from '@/lib/api';
+import { useAuthStore } from '@/lib/auth-store';
+import {
+  chaptersApi,
+  coursesApi,
+  departmentsApi,
+  lessonsApi,
+  subjectsApi,
+  type LessonType,
+} from '@/lib/curriculum';
+
+const STEPS = ['Thông tin cơ bản', 'Cấu trúc bài học', 'Cài đặt', 'Xem trước & gửi'];
+
+const AUTO_SAVE_INTERVAL = 30_000; // 30 seconds — per Phase 10 spec
+
+interface DraftChapter {
+  id: string;
+  title: string;
+  lessons: DraftLesson[];
+}
+
+interface DraftLesson {
+  id: string;
+  title: string;
+  type: LessonType;
+}
+
+export default function CreateCoursePage() {
+  const router = useRouter();
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const [step, setStep] = useState(0);
+
+  // ---------- Step 1 form state ----------
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [thumbnailUrl, setThumbnailUrl] = useState('');
+  const [departmentId, setDepartmentId] = useState('');
+  const [subjectId, setSubjectId] = useState('');
+  const [uploading, setUploading] = useState(false);
+
+  // ---------- Step 2 structure ----------
+  const [chapters, setChapters] = useState<DraftChapter[]>([]);
+
+  // ---------- Created course id (after step 1 submit) ----------
+  const [courseId, setCourseId] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [autoSaving, setAutoSaving] = useState(false);
+
+  // Cascading filter for ngành/môn
+  const departments = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => departmentsApi.list(),
+    staleTime: 60 * 60 * 1000,
+  });
+  const subjects = useQuery({
+    queryKey: ['subjects', departmentId],
+    queryFn: () => subjectsApi.list(departmentId || undefined),
+    enabled: !!departmentId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Auto-save: debounce 30s on Step 1 fields once a course exists.
+  const dirtyRef = useRef(false);
+  useEffect(() => {
+    dirtyRef.current = true;
+  }, [title, description, thumbnailUrl, subjectId]);
+
+  useEffect(() => {
+    if (!courseId) return;
+    const timer = setInterval(async () => {
+      if (!dirtyRef.current) return;
+      dirtyRef.current = false;
+      setAutoSaving(true);
+      try {
+        await coursesApi.update(
+          courseId,
+          {
+            title: title || undefined,
+            description: description || undefined,
+            subjectId: subjectId || undefined,
+          },
+          accessToken!,
+        );
+        if (thumbnailUrl) {
+          // thumbnail update if provided
+          await coursesApi.update(courseId, { thumbnailUrl } as never, accessToken!);
+        }
+        setSavedAt(new Date());
+      } catch (err) {
+        // Silently log — auto-save shouldn't toast on every retry. Manual
+        // saves still surface errors.
+        // eslint-disable-next-line no-console
+        console.warn('[auto-save]', err);
+      } finally {
+        setAutoSaving(false);
+      }
+    }, AUTO_SAVE_INTERVAL);
+    return () => clearInterval(timer);
+  }, [courseId, accessToken, title, description, thumbnailUrl, subjectId]);
+
+  // ---------- Step navigation ----------
+  const validateStep = (s: number): string | null => {
+    if (s === 0) {
+      if (!title.trim() || title.trim().length < 2) return 'Tên khoá học cần ít nhất 2 ký tự';
+      if (!subjectId) return 'Chọn môn học';
+      return null;
+    }
+    if (s === 1) {
+      if (chapters.length === 0) return 'Thêm ít nhất 1 chương';
+      const emptyChapter = chapters.find((c) => c.lessons.length === 0);
+      if (emptyChapter) return `Chương "${emptyChapter.title}" chưa có bài giảng`;
+      return null;
+    }
+    return null;
+  };
+
+  const handleNext = async () => {
+    const err = validateStep(step);
+    if (err) {
+      toast.error(err);
+      return;
+    }
+    if (step === 0 && !courseId) {
+      // Persist initial course on first Next from step 1
+      try {
+        const created = await coursesApi.create(
+          { subjectId, title: title.trim(), description: description || undefined },
+          accessToken!,
+        );
+        // Patch thumbnail separately if provided (create DTO doesn't accept it).
+        if (thumbnailUrl) {
+          await coursesApi.update(created.id, { thumbnailUrl } as never, accessToken!);
+        }
+        setCourseId(created.id);
+        setSavedAt(new Date());
+        toast.success('Đã tạo bản nháp khoá học');
+      } catch (e) {
+        const msg = e instanceof ApiError ? e.message : 'Tạo khoá học thất bại';
+        toast.error(msg);
+        return;
+      }
+    }
+    if (step === 1 && courseId) {
+      // Persist all chapter+lesson order: just iterate and call reorder
+      // for each. Backend Phase 08 reorder is N+1 transactional, fine for
+      // a typical wizard (<20 chapters / 100 lessons).
+      try {
+        for (let i = 0; i < chapters.length; i += 1) {
+          const c = chapters[i]!;
+          await chaptersApi.reorder(c.id, i, accessToken!);
+          for (let j = 0; j < c.lessons.length; j += 1) {
+            const l = c.lessons[j]!;
+            await lessonsApi.reorder(l.id, j, accessToken!);
+          }
+        }
+        setSavedAt(new Date());
+      } catch (e) {
+        const msg = e instanceof ApiError ? e.message : 'Lưu thứ tự thất bại';
+        toast.error(msg);
+        return;
+      }
+    }
+    setStep((s) => Math.min(STEPS.length - 1, s + 1));
+  };
+
+  const handleBack = () => setStep((s) => Math.max(0, s - 1));
+
+  // ---------- Step 4 actions ----------
+  const handleSubmitForReview = async () => {
+    if (!courseId) return;
+    try {
+      await coursesApi.updateStatus(courseId, 'SUBMIT', accessToken!);
+      toast.success('Đã gửi khoá học cho admin duyệt');
+      router.push('/instructor/courses');
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : 'Gửi duyệt thất bại';
+      toast.error(msg);
+    }
+  };
+
+  const handleSaveDraft = () => {
+    toast.success('Đã lưu bản nháp');
+    router.push('/instructor/courses');
+  };
+
+  // ---------- Step 1 thumbnail upload ----------
+  const handleThumbnailUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      const result = await uploadApi.thumbnail(file, accessToken!);
+      setThumbnailUrl(result.url);
+      toast.success('Đã upload thumbnail');
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : 'Upload thất bại';
+      toast.error(msg);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ---------- Step 2 chapter + lesson management ----------
+  const addChapter = async () => {
+    if (!courseId) {
+      toast.error('Cần điền thông tin cơ bản trước khi thêm chương');
+      return;
+    }
+    const titleNew = window.prompt('Tên chương:');
+    if (!titleNew?.trim()) return;
+    try {
+      const created = await chaptersApi.create(courseId, { title: titleNew.trim() }, accessToken!);
+      setChapters((prev) => [...prev, { id: created.id, title: created.title, lessons: [] }]);
+      setSavedAt(new Date());
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : 'Tạo chương thất bại';
+      toast.error(msg);
+    }
+  };
+
+  const addLesson = async (chapterId: string) => {
+    const titleNew = window.prompt('Tên bài giảng:');
+    if (!titleNew?.trim()) return;
+    const type = window.confirm('OK = Lý thuyết, Cancel = Thực hành ảo') ? 'THEORY' : 'PRACTICE';
+    try {
+      const created = await lessonsApi.createInChapter(
+        chapterId,
+        { title: titleNew.trim(), type: type as LessonType },
+        accessToken!,
+      );
+      setChapters((prev) =>
+        prev.map((c) =>
+          c.id === chapterId
+            ? {
+                ...c,
+                lessons: [
+                  ...c.lessons,
+                  { id: created.id, title: created.title, type: created.type },
+                ],
+              }
+            : c,
+        ),
+      );
+      setSavedAt(new Date());
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : 'Tạo bài giảng thất bại';
+      toast.error(msg);
+    }
+  };
+
+  // ---------- DnD ----------
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleChapterDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    setChapters((prev) => {
+      const oldIdx = prev.findIndex((c) => c.id === active.id);
+      const newIdx = prev.findIndex((c) => c.id === over.id);
+      return oldIdx >= 0 && newIdx >= 0 ? arrayMove(prev, oldIdx, newIdx) : prev;
+    });
+  };
+
+  const handleLessonDragEnd = (chapterId: string, e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    setChapters((prev) =>
+      prev.map((c) => {
+        if (c.id !== chapterId) return c;
+        const oldIdx = c.lessons.findIndex((l) => l.id === active.id);
+        const newIdx = c.lessons.findIndex((l) => l.id === over.id);
+        return oldIdx >= 0 && newIdx >= 0
+          ? { ...c, lessons: arrayMove(c.lessons, oldIdx, newIdx) }
+          : c;
+      }),
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Tạo khoá học mới</h1>
+          <p className="mt-1 text-sm text-muted">
+            Wizard 4 bước. Auto-save mỗi 30 giây sau khi tạo bản nháp.
+          </p>
+        </div>
+        <div className="text-xs text-muted">
+          {autoSaving
+            ? 'Đang lưu…'
+            : savedAt
+              ? `Đã lưu lúc ${savedAt.toLocaleTimeString('vi-VN')}`
+              : 'Chưa lưu'}
+        </div>
+      </header>
+
+      <Stepper steps={STEPS} current={step} />
+
+      <Card>
+        <CardContent className="p-6">
+          {step === 0 && (
+            <Step1Info
+              title={title}
+              setTitle={setTitle}
+              description={description}
+              setDescription={setDescription}
+              thumbnailUrl={thumbnailUrl}
+              uploading={uploading}
+              onUpload={handleThumbnailUpload}
+              departmentId={departmentId}
+              setDepartmentId={(v) => {
+                setDepartmentId(v);
+                setSubjectId('');
+              }}
+              subjectId={subjectId}
+              setSubjectId={setSubjectId}
+              departments={departments.data ?? []}
+              subjects={subjects.data ?? []}
+            />
+          )}
+
+          {step === 1 && (
+            <Step2Structure
+              chapters={chapters}
+              onAddChapter={addChapter}
+              onAddLesson={addLesson}
+              onChapterDragEnd={handleChapterDragEnd}
+              onLessonDragEnd={handleLessonDragEnd}
+              sensors={sensors}
+            />
+          )}
+
+          {step === 2 && <Step3Settings />}
+
+          {step === 3 && (
+            <Step4Preview
+              title={title}
+              description={description}
+              thumbnailUrl={thumbnailUrl}
+              chapters={chapters}
+            />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Footer nav */}
+      <div className="flex items-center justify-between">
+        <Button variant="ghost" onClick={handleBack} disabled={step === 0}>
+          <ChevronLeft className="h-4 w-4" />
+          Quay lại
+        </Button>
+
+        {step < STEPS.length - 1 ? (
+          <Button onClick={handleNext}>
+            Tiếp theo
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        ) : (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleSaveDraft}>
+              <Save className="h-4 w-4" />
+              Lưu nháp
+            </Button>
+            <Button onClick={handleSubmitForReview}>
+              <Send className="h-4 w-4" />
+              Gửi duyệt Admin
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// =====================================================
+// Step 1
+// =====================================================
+function Step1Info({
+  title,
+  setTitle,
+  description,
+  setDescription,
+  thumbnailUrl,
+  uploading,
+  onUpload,
+  departmentId,
+  setDepartmentId,
+  subjectId,
+  setSubjectId,
+  departments,
+  subjects,
+}: {
+  title: string;
+  setTitle: (v: string) => void;
+  description: string;
+  setDescription: (v: string) => void;
+  thumbnailUrl: string;
+  uploading: boolean;
+  onUpload: (file: File) => void;
+  departmentId: string;
+  setDepartmentId: (v: string) => void;
+  subjectId: string;
+  setSubjectId: (v: string) => void;
+  departments: Array<{ id: string; name: string }>;
+  subjects: Array<{ id: string; name: string }>;
+}) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <label htmlFor="course-title" className="mb-1.5 block text-sm font-medium">
+          Tên khoá học <span className="text-red-500">*</span>
+        </label>
+        <input
+          id="course-title"
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Ví dụ: An toàn lao động cơ bản"
+          maxLength={200}
+          className="h-10 w-full rounded-button border border-border bg-background px-3.5 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/20"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="course-desc" className="mb-1.5 block text-sm font-medium">
+          Mô tả ngắn
+        </label>
+        <textarea
+          id="course-desc"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={4}
+          maxLength={1000}
+          placeholder="Mô tả nội dung khoá học, đối tượng học viên…"
+          className="w-full rounded-button border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/20"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="thumbnail" className="mb-1.5 block text-sm font-medium">
+          Thumbnail
+        </label>
+        <div className="flex items-center gap-3">
+          {thumbnailUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={thumbnailUrl} alt="" className="h-20 w-32 shrink-0 rounded object-cover" />
+          )}
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-button border border-dashed border-border px-4 py-2 text-sm hover:border-primary">
+            <Upload className="h-4 w-4" />
+            {uploading ? 'Đang upload…' : thumbnailUrl ? 'Đổi ảnh' : 'Chọn ảnh'}
+            <input
+              id="thumbnail"
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onUpload(f);
+              }}
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div>
+          <label htmlFor="department" className="mb-1.5 block text-sm font-medium">
+            Ngành học
+          </label>
+          <select
+            id="department"
+            value={departmentId}
+            onChange={(e) => setDepartmentId(e.target.value)}
+            className="h-10 w-full rounded-button border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/20"
+          >
+            <option value="">— Chọn ngành —</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="subject" className="mb-1.5 block text-sm font-medium">
+            Môn học <span className="text-red-500">*</span>
+          </label>
+          <select
+            id="subject"
+            value={subjectId}
+            onChange={(e) => setSubjectId(e.target.value)}
+            disabled={!departmentId}
+            className="h-10 w-full rounded-button border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/20 disabled:opacity-50"
+          >
+            <option value="">— Chọn môn —</option>
+            {subjects.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =====================================================
+// Step 2 — drag-drop
+// =====================================================
+function Step2Structure({
+  chapters,
+  onAddChapter,
+  onAddLesson,
+  onChapterDragEnd,
+  onLessonDragEnd,
+  sensors,
+}: {
+  chapters: DraftChapter[];
+  onAddChapter: () => void;
+  onAddLesson: (chapterId: string) => void;
+  onChapterDragEnd: (e: DragEndEvent) => void;
+  onLessonDragEnd: (chapterId: string, e: DragEndEvent) => void;
+  sensors: ReturnType<typeof useSensors>;
+}) {
+  const chapterIds = useMemo(() => chapters.map((c) => c.id), [chapters]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted">
+          Kéo-thả để sắp xếp lại thứ tự. Mỗi chương cần ít nhất 1 bài giảng.
+        </p>
+        <Button variant="outline" onClick={onAddChapter}>
+          <Plus className="h-4 w-4" />
+          Thêm chương
+        </Button>
+      </div>
+
+      {chapters.length === 0 ? (
+        <div className="rounded-card border border-dashed border-border bg-surface-2/30 py-12 text-center">
+          <p className="text-sm text-muted">Chưa có chương nào.</p>
+        </div>
+      ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={onChapterDragEnd}
+        >
+          <SortableContext items={chapterIds} strategy={verticalListSortingStrategy}>
+            <div className="space-y-3">
+              {chapters.map((ch, idx) => (
+                <SortableChapter
+                  key={ch.id}
+                  chapter={ch}
+                  index={idx}
+                  onAddLesson={() => onAddLesson(ch.id)}
+                  onLessonDragEnd={(e) => onLessonDragEnd(ch.id, e)}
+                  sensors={sensors}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      )}
+    </div>
+  );
+}
+
+function SortableChapter({
+  chapter,
+  index,
+  onAddLesson,
+  onLessonDragEnd,
+  sensors,
+}: {
+  chapter: DraftChapter;
+  index: number;
+  onAddLesson: () => void;
+  onLessonDragEnd: (e: DragEndEvent) => void;
+  sensors: ReturnType<typeof useSensors>;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: chapter.id,
+  });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+  const lessonIds = useMemo(() => chapter.lessons.map((l) => l.id), [chapter.lessons]);
+
+  return (
+    <div ref={setNodeRef} style={style} className="rounded-card border border-border bg-surface">
+      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          className="cursor-grab text-muted hover:text-foreground active:cursor-grabbing"
+          aria-label="Kéo để sắp xếp chương"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+        <span className="text-xs font-mono text-muted">#{index + 1}</span>
+        <h4 className="flex-1 text-sm font-semibold">{chapter.title}</h4>
+        <Button size="sm" variant="ghost" onClick={onAddLesson}>
+          <Plus className="h-3.5 w-3.5" />
+          Thêm bài
+        </Button>
+      </div>
+      <div className="p-3">
+        {chapter.lessons.length === 0 ? (
+          <p className="py-3 text-center text-xs italic text-muted">Chưa có bài giảng nào</p>
+        ) : (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={onLessonDragEnd}
+          >
+            <SortableContext items={lessonIds} strategy={verticalListSortingStrategy}>
+              <ul className="space-y-1">
+                {chapter.lessons.map((l, lidx) => (
+                  <SortableLesson key={l.id} lesson={l} index={lidx} />
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SortableLesson({ lesson, index }: { lesson: DraftLesson; index: number }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: lesson.id,
+  });
+  return (
+    <li
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
+      }}
+      className="flex items-center gap-2 rounded border border-transparent px-2 py-1.5 hover:border-border hover:bg-surface-2/40"
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="cursor-grab text-muted hover:text-foreground active:cursor-grabbing"
+        aria-label="Kéo để sắp xếp bài"
+      >
+        <GripVertical className="h-3 w-3" />
+      </button>
+      <span className="text-xs font-mono text-muted">{index + 1}.</span>
+      <span className="flex-1 text-sm">{lesson.title}</span>
+      <span
+        className={
+          'rounded-full px-2 py-0.5 text-[10px] font-semibold ' +
+          (lesson.type === 'THEORY'
+            ? 'bg-primary/10 text-primary'
+            : 'bg-secondary/10 text-secondary')
+        }
+      >
+        {lesson.type === 'THEORY' ? 'Lý thuyết' : 'Thực hành'}
+      </span>
+    </li>
+  );
+}
+
+// =====================================================
+// Step 3 — settings (placeholder, full impl Phase 11)
+// =====================================================
+function Step3Settings() {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-card bg-warning/10 px-4 py-3 text-sm text-warning">
+        <strong>Phase 10:</strong> Chỉ giữ chỗ cho cài đặt nâng cao. Prerequisite, certificate
+        criteria và thời hạn sẽ được implement ở Phase 11. Hiện tại bạn có thể chuyển sang bước Xem
+        trước.
+      </div>
+      <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <li className="rounded-card border border-dashed border-border p-4 text-sm text-muted">
+          🔒 Khoá học tiên quyết — Phase 11
+        </li>
+        <li className="rounded-card border border-dashed border-border p-4 text-sm text-muted">
+          📅 Thời hạn hoàn thành — Phase 11
+        </li>
+        <li className="rounded-card border border-dashed border-border p-4 text-sm text-muted">
+          🏆 Tiêu chí cấp chứng chỉ — Phase 11
+        </li>
+        <li className="rounded-card border border-dashed border-border p-4 text-sm text-muted">
+          👥 Giới hạn số học viên — Phase 11
+        </li>
+      </ul>
+    </div>
+  );
+}
+
+// =====================================================
+// Step 4 — preview
+// =====================================================
+function Step4Preview({
+  title,
+  description,
+  thumbnailUrl,
+  chapters,
+}: {
+  title: string;
+  description: string;
+  thumbnailUrl: string;
+  chapters: DraftChapter[];
+}) {
+  const totalLessons = chapters.reduce((sum, c) => sum + c.lessons.length, 0);
+  return (
+    <div className="space-y-4">
+      <div className="rounded-card border border-border bg-surface p-4">
+        <div className="flex gap-4">
+          {thumbnailUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={thumbnailUrl} alt="" className="h-32 w-48 shrink-0 rounded object-cover" />
+          )}
+          <div className="min-w-0 flex-1">
+            <h3 className="text-lg font-bold">{title || '(Chưa có tên)'}</h3>
+            <p className="mt-1 text-sm text-muted">{description || '(Chưa có mô tả)'}</p>
+            <div className="mt-3 flex gap-3 text-xs text-muted">
+              <span>{chapters.length} chương</span>
+              <span>·</span>
+              <span>{totalLessons} bài giảng</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h4 className="mb-2 text-sm font-semibold">Cấu trúc bài học</h4>
+        <ol className="space-y-2">
+          {chapters.map((c, i) => (
+            <li key={c.id} className="rounded-card border border-border bg-surface p-3">
+              <div className="font-medium">
+                Chương {i + 1}: {c.title}
+              </div>
+              <ul className="mt-1 list-disc pl-5 text-sm text-muted">
+                {c.lessons.map((l) => (
+                  <li key={l.id}>
+                    {l.title} <span className="text-xs">({l.type === 'THEORY' ? 'LT' : 'TH'})</span>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </div>
+  );
+}
