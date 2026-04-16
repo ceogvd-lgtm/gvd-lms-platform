@@ -51,6 +51,26 @@ interface Scorm2004Api extends Scorm12Api {}
  * allow-forms`) so legacy SCORM 1.2 packages that POST to fake URLs
  * don't try to navigate the parent.
  */
+/**
+ * Rewrite the MinIO-hosted SCORM URL the backend returned into a
+ * same-origin URL served by Next's `/scorm-content/*` rewrite.
+ *
+ * Storyline / Captivate SCOs reach back into their host LMS through
+ * `window.parent.API.LMSInitialize()` — cross-origin property access
+ * that the browser silently blocks when the iframe is on a different
+ * origin than the parent. Routing via the Next rewrite puts both on
+ * the same origin so the bridge works.
+ *
+ * Accepts any URL under `…/content/scorm/{rest}`; unmatched URLs are
+ * returned unchanged so non-SCORM entry URLs keep working.
+ */
+function toSameOriginScormUrl(raw: string): string {
+  const marker = '/content/scorm/';
+  const idx = raw.indexOf(marker);
+  if (idx < 0) return raw;
+  return `/scorm-content/${raw.slice(idx + marker.length)}`;
+}
+
 export function ScormPlayer({ lessonId, manifest, onComplete }: ScormPlayerProps) {
   const accessToken = useAuthStore((s) => s.accessToken);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -58,6 +78,8 @@ export function ScormPlayer({ lessonId, manifest, onComplete }: ScormPlayerProps
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const completedRef = useRef(false);
   const apiRef = useRef<Scorm12Api | null>(null);
+
+  const iframeSrc = toSameOriginScormUrl(manifest.entryUrl);
 
   // =====================================================
   // Initialise the scorm-again API as soon as the library is on window.
@@ -152,7 +174,7 @@ export function ScormPlayer({ lessonId, manifest, onComplete }: ScormPlayerProps
         )}
         <iframe
           ref={iframeRef}
-          src={manifest.entryUrl}
+          src={iframeSrc}
           title={manifest.title}
           onLoad={() => setIframeLoaded(true)}
           className="block h-[700px] w-full border-0"
