@@ -1,10 +1,10 @@
 import type { JwtPayload } from '@lms/types';
 import { Role } from '@lms/types';
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
-  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -139,7 +139,7 @@ export class StorageController {
   @HttpCode(HttpStatus.OK)
   async deleteObject(@Param('0') key: string) {
     if (!key) {
-      throw new ForbiddenException('Missing key');
+      throw new BadRequestException('Thiếu key đối tượng');
     }
     await this.storage.delete(key);
     return { message: 'Đã xoá', key };
@@ -148,7 +148,9 @@ export class StorageController {
 
 function assertFile(file: Express.Multer.File | undefined): asserts file is Express.Multer.File {
   if (!file) {
-    // Throw a 400 if multer couldn't find the expected `file` field.
-    throw new ForbiddenException('Thiếu file trong multipart field "file"');
+    // 400 — caller forgot to attach a file under the `file` multipart field.
+    // (Was ForbiddenException — misleading because this is a client input
+    //  error, not an authorisation failure.)
+    throw new BadRequestException('Thiếu file trong multipart field "file"');
   }
 }
