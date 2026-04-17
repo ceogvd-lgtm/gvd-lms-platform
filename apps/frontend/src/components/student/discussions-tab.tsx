@@ -3,11 +3,15 @@
 import { Avatar, Badge, Button, Card, CardContent } from '@lms/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MessageSquare, Send, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { MentionComposer, type MentionComposerHandle } from './mention-composer';
+
 import { useAuthStore } from '@/lib/auth-store';
+import { connectNotificationsSocket, type AppNotification } from '@/lib/notifications';
 import { discussionsApi, type DiscussionThread } from '@/lib/students';
+
 
 interface DiscussionsTabProps {
   lessonId: string;
@@ -30,6 +34,7 @@ export function DiscussionsTab({ lessonId }: DiscussionsTabProps) {
   const user = useAuthStore((s) => s.user);
   const qc = useQueryClient();
   const [draft, setDraft] = useState('');
+  const composerRef = useRef<MentionComposerHandle>(null);
 
   const query = useQuery({
     queryKey: ['discussions', lessonId],
@@ -38,9 +43,34 @@ export function DiscussionsTab({ lessonId }: DiscussionsTabProps) {
     refetchOnWindowFocus: true,
   });
 
+  // Phase 14 gap #2 — Realtime Q&A. Subscribe to the shared
+  // /notifications socket and refetch the thread list whenever a
+  // DISCUSSION_REPLY or DISCUSSION_MENTION lands for THIS lesson.
+  //
+  // We piggy-back on the existing bell socket instead of a dedicated
+  // namespace so the connection is reused and the student sees the red
+  // dot on the bell at the same time as the tab refreshes.
+  useEffect(() => {
+    if (!accessToken) return;
+    const socket = connectNotificationsSocket(accessToken);
+    const onNotification = (n: AppNotification) => {
+      if (n.type !== 'DISCUSSION_REPLY' && n.type !== 'DISCUSSION_MENTION') return;
+      const data = n.data as { lessonId?: string } | null | undefined;
+      if (data?.lessonId !== lessonId) return;
+      qc.invalidateQueries({ queryKey: ['discussions', lessonId] });
+    };
+    socket.on('notification', onNotification);
+    return () => {
+      socket.off('notification', onNotification);
+      // NOTE: don't disconnect — the bell dropdown owns the lifecycle.
+    };
+  }, [accessToken, lessonId, qc]);
+
   const createThread = useMutation({
-    mutationFn: (content: string) => discussionsApi.create(lessonId, content, accessToken!),
+    mutationFn: (payload: { content: string; mentionUserIds?: string[] }) =>
+      discussionsApi.create(lessonId, payload, accessToken!),
     onSuccess: () => {
+      composerRef.current?.reset();
       setDraft('');
       qc.invalidateQueries({ queryKey: ['discussions', lessonId] });
       toast.success('Đã gửi câu hỏi');
@@ -50,6 +80,15 @@ export function DiscussionsTab({ lessonId }: DiscussionsTabProps) {
     },
   });
 
+  const submitThread = () => {
+    const content = draft.trim();
+    if (!content) return;
+    createThread.mutate({
+      content,
+      mentionUserIds: composerRef.current?.getMentions() ?? [],
+    });
+  };
+
   const canDelete = (authorId: string) =>
     !!user && (user.id === authorId || user.role === 'ADMIN' || user.role === 'SUPER_ADMIN');
 
@@ -58,17 +97,18 @@ export function DiscussionsTab({ lessonId }: DiscussionsTabProps) {
       {/* Composer */}
       <Card>
         <CardContent className="space-y-2 p-4">
-          <textarea
+          <MentionComposer
+            ref={composerRef}
+            lessonId={lessonId}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={setDraft}
             rows={3}
-            placeholder="Đặt câu hỏi về bài học… Giảng viên sẽ nhận được thông báo."
-            className="w-full rounded-button border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/20"
+            placeholder="Đặt câu hỏi về bài học… Gõ @ để tag giảng viên."
           />
           <div className="flex justify-end">
             <Button
               size="sm"
-              onClick={() => createThread.mutate(draft.trim())}
+              onClick={submitThread}
               disabled={!draft.trim() || createThread.isPending}
             >
               <Send className="h-4 w-4" />
@@ -128,14 +168,26 @@ function ThreadCard({
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const [replyDraft, setReplyDraft] = useState('');
+  const replyComposerRef = useRef<MentionComposerHandle>(null);
 
   const createReply = useMutation({
-    mutationFn: (content: string) => discussionsApi.reply(thread.id, content, accessToken),
+    mutationFn: (payload: { content: string; mentionUserIds?: string[] }) =>
+      discussionsApi.reply(thread.id, payload, accessToken),
     onSuccess: () => {
+      replyComposerRef.current?.reset();
       setReplyDraft('');
       qc.invalidateQueries({ queryKey: ['discussions', lessonId] });
     },
   });
+
+  const submitReply = () => {
+    const content = replyDraft.trim();
+    if (!content) return;
+    createReply.mutate({
+      content,
+      mentionUserIds: replyComposerRef.current?.getMentions() ?? [],
+    });
+  };
 
   const deleteThread = useMutation({
     mutationFn: () => discussionsApi.deleteThread(thread.id, accessToken),
@@ -188,19 +240,22 @@ function ThreadCard({
             </ul>
           )}
 
-          {/* Reply composer */}
+          {/* Reply composer — supports @-mention same as the thread composer */}
           <div className="flex gap-2">
-            <input
-              type="text"
-              value={replyDraft}
-              onChange={(e) => setReplyDraft(e.target.value)}
-              placeholder="Trả lời…"
-              className="h-9 flex-1 rounded-button border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/20"
-            />
+            <div className="flex-1">
+              <MentionComposer
+                ref={replyComposerRef}
+                lessonId={lessonId}
+                value={replyDraft}
+                onChange={setReplyDraft}
+                placeholder="Trả lời… (gõ @ để tag)"
+                singleLine
+              />
+            </div>
             <Button
               size="sm"
               variant="outline"
-              onClick={() => createReply.mutate(replyDraft.trim())}
+              onClick={submitReply}
               disabled={!replyDraft.trim() || createReply.isPending}
             >
               Gửi

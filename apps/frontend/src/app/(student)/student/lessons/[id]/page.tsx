@@ -4,7 +4,9 @@ import { Button, Tabs, TabsContent, TabsList, TabsTrigger, cn } from '@lms/ui';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, FileText, Menu } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSwipeable } from 'react-swipeable';
 import { toast } from 'sonner';
 
 import { DiscussionsTab } from '@/components/student/discussions-tab';
@@ -28,6 +30,7 @@ import {
   type ScormManifestResponse,
   type SlideDeck,
 } from '@/lib/theory-engine';
+import { showXpEarned } from '@/lib/xp-toast';
 
 interface PageProps {
   params: { id: string };
@@ -128,8 +131,21 @@ export default function StudentLessonPage({ params }: PageProps) {
   async function markLessonComplete() {
     if (!accessToken) return;
     try {
-      await lessonEngineApi.complete(lessonId, accessToken);
+      const result = await lessonEngineApi.complete(lessonId, accessToken);
       toast.success('Chúc mừng, bạn đã hoàn thành bài học!');
+      // Phase 14 gap #4 — "+XP earned" popups. The backend tells us
+      // exactly which awards fired this request:
+      //   - lesson > 0 → +10 XP for first-ever completion of the lesson
+      //   - course > 0 → +100 XP bonus because this completion took the
+      //                  whole course to 100%
+      // Staggered so the two toasts don't stack ugly at exactly the
+      // same moment.
+      if (result.xpAwarded.lesson > 0) {
+        showXpEarned(result.xpAwarded.lesson, 'LESSON_COMPLETED');
+      }
+      if (result.xpAwarded.course > 0) {
+        window.setTimeout(() => showXpEarned(result.xpAwarded.course, 'COURSE_COMPLETED'), 800);
+      }
       if (!confettiFiredRef.current) {
         confettiFiredRef.current = true;
         setShowConfetti(true);
@@ -160,8 +176,41 @@ export default function StudentLessonPage({ params }: PageProps) {
 
   const theory = theoryQuery.data;
 
+  // =====================================================
+  // Phase 14 gap #5 — mobile swipe prev/next
+  // =====================================================
+  // `useSwipeable` returns handlers you spread onto any element. We
+  // attach them to the outer page wrapper so the gesture works no
+  // matter which tab the student is on.
+  //
+  // Gesture rules (matching the visual arrows):
+  //   swipe LEFT  (finger → right-to-left) → go to NEXT lesson
+  //   swipe RIGHT (finger → left-to-right) → go to PREV lesson
+  //
+  // We deliberately swallow the gesture on desktop (`trackMouse: false`)
+  // so mouse-drag selection inside TipTap / the quiz UI isn't hijacked.
+  const router = useRouter();
+  const prev = contextQuery.data?.prev ?? null;
+  const next = contextQuery.data?.next ?? null;
+
+  const swipeHandlers = useSwipeable({
+    onSwipedLeft: () => {
+      if (next) router.push(`/student/lessons/${next.id}`);
+    },
+    onSwipedRight: () => {
+      if (prev) router.push(`/student/lessons/${prev.id}`);
+    },
+    // Only fire on a committed swipe — 60px minimum so accidental
+    // scrolls inside the video/PPT player don't navigate away.
+    delta: 60,
+    trackMouse: false,
+    // Prevent default only on horizontal — vertical scroll must keep
+    // working for the page content.
+    preventScrollOnSwipe: false,
+  });
+
   return (
-    <div className="flex min-h-[calc(100vh-64px)]">
+    <div {...swipeHandlers} className="flex min-h-[calc(100vh-64px)]">
       {/* Sidebar — desktop */}
       <div className="hidden w-60 shrink-0 lg:block">
         {tree.data && tree.data.length > 0 ? (
@@ -356,21 +405,44 @@ export default function StudentLessonPage({ params }: PageProps) {
           </Tabs>
         </div>
 
-        {/* Bottom nav (stub — real siblings wired in Phase 13 when the
-            course context endpoint lands) */}
+        {/* Bottom nav — wired to LessonContext (Phase 14 gap #5).
+            Mobile users can also swipe left/right on the page to
+            navigate; the buttons stay for desktop + discoverability. */}
         <div className="sticky bottom-0 z-10 flex items-center justify-between border-t border-border bg-surface/80 px-4 py-3 backdrop-blur">
-          <Button variant="ghost" disabled>
-            <ArrowLeft className="h-4 w-4" />
-            Bài trước
-          </Button>
+          {prev ? (
+            <Button asChild variant="ghost" title={prev.title}>
+              <Link href={`/student/lessons/${prev.id}`}>
+                <ArrowLeft className="h-4 w-4" />
+                <span className="hidden sm:inline">Bài trước</span>
+              </Link>
+            </Button>
+          ) : (
+            <Button variant="ghost" disabled>
+              <ArrowLeft className="h-4 w-4" />
+              <span className="hidden sm:inline">Bài trước</span>
+            </Button>
+          )}
           <Link href="/student/dashboard" className="text-xs text-muted hover:text-primary">
             Về trang chủ
           </Link>
-          <Button variant="ghost" disabled>
-            Bài tiếp theo
-            <ArrowRight className="h-4 w-4" />
-          </Button>
+          {next ? (
+            <Button asChild variant="ghost" title={next.title}>
+              <Link href={`/student/lessons/${next.id}`}>
+                <span className="hidden sm:inline">Bài tiếp theo</span>
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          ) : (
+            <Button variant="ghost" disabled>
+              <span className="hidden sm:inline">Bài tiếp theo</span>
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          )}
         </div>
+
+        {/* Mobile swipe hint — only appears on small screens on first
+            render; fades out after 3s so it doesn't overstay. */}
+        <MobileSwipeHint hasPrev={!!prev} hasNext={!!next} />
       </div>
 
       {/* Confetti — inline SVG burst on first completion */}
@@ -478,5 +550,43 @@ function ConfettiBurst() {
       <ChevronLeft className="hidden" />
       <ChevronRight className="hidden" />
     </div>
+  );
+}
+
+/**
+ * Phase 14 gap #5 — one-shot toast-like banner that teaches the mobile
+ * user about swipe navigation. Dismisses itself after 3s or on first
+ * tap. Hidden on screens >= sm.
+ */
+function MobileSwipeHint({ hasPrev, hasNext }: { hasPrev: boolean; hasNext: boolean }) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (!hasPrev && !hasNext) return;
+    // sessionStorage so the hint doesn't spam — shown at most once per
+    // browser tab's lifetime. A later server-side "first-time user"
+    // flag could upgrade this to persistent dismissal.
+    if (typeof window === 'undefined') return;
+    if (sessionStorage.getItem('lmsSwipeHintDismissed') === '1') return;
+    setVisible(true);
+    const t = window.setTimeout(() => {
+      setVisible(false);
+      sessionStorage.setItem('lmsSwipeHintDismissed', '1');
+    }, 3000);
+    return () => window.clearTimeout(t);
+  }, [hasPrev, hasNext]);
+
+  if (!visible) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => setVisible(false)}
+      className="fixed bottom-20 left-1/2 z-30 -translate-x-1/2 rounded-full bg-foreground/90 px-4 py-2 text-xs text-background shadow-lg sm:hidden"
+    >
+      {hasPrev && hasNext
+        ? 'Vuốt sang trái/phải để chuyển bài'
+        : hasNext
+          ? 'Vuốt trái để sang bài kế tiếp'
+          : 'Vuốt phải để về bài trước'}
+    </button>
   );
 }

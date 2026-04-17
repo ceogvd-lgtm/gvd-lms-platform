@@ -179,4 +179,41 @@ describe('LessonsService — completeForStudent', () => {
     // VideoProgress must NOT be queried for SCORM lessons.
     expect(prisma.client.videoProgress.findUnique).not.toHaveBeenCalled();
   });
+
+  // =====================================================
+  // Phase 14 gap #4 — XP-awarded report flag
+  // =====================================================
+  // The response has an `xpAwarded` object the frontend uses to decide
+  // which "+XP earned" toasts to show. On FIRST completion of a lesson
+  // that doesn't (yet) finish the course, we expect lesson=10, course=0.
+  it('reports xpAwarded.lesson=10 on first completion, course=0 when course incomplete', async () => {
+    prisma.client.lesson.findUnique
+      // First call: fetch lesson for completeForStudent
+      .mockResolvedValueOnce({
+        id: 'lesson-1',
+        isDeleted: false,
+        theoryContent: { id: 'tc-1', contentType: 'VIDEO', completionThreshold: 0.8 },
+        quizzes: [],
+      })
+      // Second call inside checkAndAwardCourseCompletion
+      .mockResolvedValueOnce({ chapter: { courseId: 'course-1' } });
+    prisma.client.videoProgress.findUnique.mockResolvedValue({ isCompleted: true });
+    // No prior LessonProgress → isFirstComplete = true
+    prisma.client.lessonProgress.findUnique.mockResolvedValue(null);
+    prisma.client.lessonProgress.upsert.mockResolvedValue({
+      lessonId: 'lesson-1',
+      status: ProgressStatus.COMPLETED,
+    });
+    // Enrollment exists but not completed, and not all lessons done
+    prisma.client.courseEnrollment.findUnique.mockResolvedValue({
+      id: 'enr-1',
+      completedAt: null,
+    });
+    prisma.client.chapter.findMany.mockResolvedValue([{ id: 'ch-1' }]);
+    prisma.client.lesson.count.mockResolvedValue(3); // 3 total
+    prisma.client.lesson.findMany.mockResolvedValue([{ id: 'l-a' }, { id: 'l-b' }, { id: 'l-c' }]);
+    prisma.client.lessonProgress.count.mockResolvedValue(1); // only 1 done
+    const row = await service.completeForStudent('student-1', 'lesson-1');
+    expect(row.xpAwarded).toEqual({ lesson: 10, course: 0 });
+  });
 });

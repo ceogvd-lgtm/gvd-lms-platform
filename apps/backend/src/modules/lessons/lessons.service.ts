@@ -259,32 +259,55 @@ export class LessonsService {
     // 1. +10 XP for first-ever completion of this lesson.
     // 2. If this completion takes the WHOLE course to 100%, mark the
     //    enrollment.completedAt + award +100 XP once.
+    //
+    // We track which awards fired so the HTTP response can tell the
+    // frontend which "+XP earned" toasts to show. `.catch(() => false)`
+    // swallows the DB error but records "no XP given" — the original
+    // design already treated XP as fire-and-forget.
+    let lessonXpAwarded = false;
+    let courseXpAwarded = false;
     if (isFirstComplete) {
-      await this.xp.award(studentId, XpReason.LESSON_COMPLETED).catch(() => undefined);
-      await this.checkAndAwardCourseCompletion(studentId, lessonId).catch(() => undefined);
+      lessonXpAwarded = await this.xp
+        .award(studentId, XpReason.LESSON_COMPLETED)
+        .then(() => true)
+        .catch(() => false);
+      courseXpAwarded = await this.checkAndAwardCourseCompletion(studentId, lessonId).catch(
+        () => false,
+      );
     }
 
-    return progress;
+    return {
+      ...progress,
+      xpAwarded: {
+        lesson: lessonXpAwarded ? 10 : 0,
+        course: courseXpAwarded ? 100 : 0,
+      },
+    };
   }
 
   /**
    * When a student completes a lesson, see if the whole course is now
    * COMPLETED too. If yes, stamp CourseEnrollment.completedAt + award
-   * the +100 XP bonus. No-op if the enrollment is already completed or
-   * the student isn't enrolled in the owning course.
+   * the +100 XP bonus. Returns true iff the +100 XP bonus was awarded
+   * on this call (caller uses it to trigger the client-side toast).
+   * Returns false if not enrolled, already completed, or course isn't
+   * at 100% yet.
    */
-  private async checkAndAwardCourseCompletion(studentId: string, lessonId: string): Promise<void> {
+  private async checkAndAwardCourseCompletion(
+    studentId: string,
+    lessonId: string,
+  ): Promise<boolean> {
     const lesson = await this.prisma.client.lesson.findUnique({
       where: { id: lessonId },
       select: { chapter: { select: { courseId: true } } },
     });
-    if (!lesson) return;
+    if (!lesson) return false;
     const courseId = lesson.chapter.courseId;
 
     const enrollment = await this.prisma.client.courseEnrollment.findUnique({
       where: { courseId_studentId: { courseId, studentId } },
     });
-    if (!enrollment || enrollment.completedAt) return;
+    if (!enrollment || enrollment.completedAt) return false;
 
     // Count total lessons in course + student's completed count.
     const chapters = await this.prisma.client.chapter.findMany({
@@ -311,13 +334,17 @@ export class LessonsService {
         },
       }),
     ]);
-    if (total === 0 || completed < total) return;
+    if (total === 0 || completed < total) return false;
 
     await this.prisma.client.courseEnrollment.update({
       where: { id: enrollment.id },
       data: { completedAt: new Date() },
     });
-    await this.xp.award(studentId, XpReason.COURSE_COMPLETED).catch(() => undefined);
+    const awarded = await this.xp
+      .award(studentId, XpReason.COURSE_COMPLETED)
+      .then(() => true)
+      .catch(() => false);
+    return awarded;
   }
 
   /**

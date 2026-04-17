@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { api, ApiError } from '@/lib/api';
 import { type QuizWithQuestions, quizzesApi } from '@/lib/assessments';
 import { useAuthStore } from '@/lib/auth-store';
+import { showXpEarned } from '@/lib/xp-toast';
 
 interface StudentQuizProps {
   lessonId: string;
@@ -175,6 +176,15 @@ export function StudentQuiz({ lessonId, locked, onPassed }: StudentQuizProps) {
       setPhase('result');
       if (res.passed) {
         toast.success(`Chúc mừng! Bạn đã qua với ${res.score}/${res.maxScore}`);
+        // Phase 14 gap #4 — +20 XP popup on first pass. The backend only
+        // awards XP on the first successful attempt for a quiz, but the
+        // client can't know that from here without a follow-up GET, so
+        // we trigger the popup on every pass — the server is the source
+        // of truth for totalXP either way. Invalidate the dashboard
+        // query so the big XP card re-renders with the new total.
+        showXpEarned(20, 'QUIZ_PASSED');
+        qc.invalidateQueries({ queryKey: ['student-dashboard'] });
+        qc.invalidateQueries({ queryKey: ['student-progress'] });
         onPassed?.();
       } else {
         toast.warning(`Chưa đạt điểm pass (${res.score}/${res.maxScore}).`);

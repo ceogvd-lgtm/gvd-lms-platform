@@ -1,6 +1,16 @@
 import type { JwtPayload } from '@lms/types';
 import { Role } from '@lms/types';
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
 
 import { Roles } from '../../common/rbac/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -25,6 +35,17 @@ export class DiscussionsController {
   @Roles(Role.STUDENT, Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
   list(@Param('lessonId') lessonId: string) {
     return this.discussions.listForLesson(lessonId);
+  }
+
+  /**
+   * Phase 14 gap #6 — mention suggestions. Used by the @MentionSuggest
+   * dropdown in the student discussions tab. `q` is the text after the
+   * "@" character; empty string returns just the course instructor.
+   */
+  @Get('lessons/:lessonId/mentionable')
+  @Roles(Role.STUDENT, Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
+  mentionable(@Param('lessonId') lessonId: string, @Query('q') q?: string) {
+    return this.discussions.getMentionable(lessonId, q ?? '');
   }
 
   @Post('lessons/:lessonId/discussions')

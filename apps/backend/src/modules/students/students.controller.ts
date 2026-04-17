@@ -1,6 +1,6 @@
 import type { JwtPayload } from '@lms/types';
 import { Role } from '@lms/types';
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param } from '@nestjs/common';
 
 import { Roles } from '../../common/rbac/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -51,5 +51,19 @@ export class StudentsController {
   @Roles(Role.STUDENT, Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
   xp(@CurrentUser() user: JwtPayload) {
     return this.students.getXp(user.sub);
+  }
+
+  @Get('certificates')
+  @Roles(Role.STUDENT, Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
+  certificates(@CurrentUser() user: JwtPayload) {
+    return this.students.getMyCertificates(user.sub);
+  }
+
+  @Get('certificates/:id')
+  @Roles(Role.STUDENT, Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
+  async certificateDetail(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    const detail = await this.students.getMyCertificateDetail(user.sub, id);
+    if (!detail) throw new NotFoundException('Không tìm thấy chứng chỉ');
+    return detail;
   }
 }

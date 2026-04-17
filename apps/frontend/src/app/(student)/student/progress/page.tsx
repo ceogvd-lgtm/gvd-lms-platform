@@ -1,8 +1,19 @@
 'use client';
 
-import { Badge, Card, CardContent } from '@lms/ui';
+import { Badge, Button, Card, CardContent } from '@lms/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, BarChart3, PieChart as PieIcon, TrendingUp } from 'lucide-react';
+import {
+  Activity,
+  Award,
+  BarChart3,
+  GraduationCap,
+  Link as LinkIcon,
+  PieChart as PieIcon,
+  Printer,
+  TrendingUp,
+} from 'lucide-react';
+import Link from 'next/link';
+import { useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -17,9 +28,10 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { toast } from 'sonner';
 
 import { useAuthStore } from '@/lib/auth-store';
-import { studentsApi, type ProgressPayload } from '@/lib/students';
+import { studentsApi, type MyCertificate, type ProgressPayload } from '@/lib/students';
 
 /**
  * /student/progress — Phase 14 progress charts.
@@ -30,6 +42,7 @@ import { studentsApi, type ProgressPayload } from '@/lib/students';
  *   3. Heatmap — GitHub-style activity over last 30 days
  *   4. Timeline feed — union of lesson completions + quiz submissions
  *   5. Class comparison line — my avg vs class avg (quiz)
+ *   6. Certificates gallery — earned certificates with PDF + verify link
  *
  * All charts are Recharts + responsive containers so dark + light both
  * pick up the CSS variable palette.
@@ -60,7 +73,12 @@ export default function StudentProgressPage() {
         </div>
       )}
 
-      {query.data && <ProgressBody data={query.data} />}
+      {query.data && (
+        <>
+          <ProgressBody data={query.data} />
+          <CertificatesRow />
+        </>
+      )}
     </div>
   );
 }
@@ -243,4 +261,143 @@ function Heatmap({ data }: { data: ProgressPayload['heatmapData'] }) {
 
 function EmptyChart({ msg }: { msg: string }) {
   return <div className="flex h-48 items-center justify-center text-sm text-muted">{msg}</div>;
+}
+
+// =====================================================
+// Row 6 — Certificates gallery (Phase 14 gap #3)
+// =====================================================
+
+function CertificatesRow() {
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const query = useQuery({
+    queryKey: ['student-certificates'],
+    queryFn: () => studentsApi.certificates(accessToken!),
+    enabled: !!accessToken,
+  });
+
+  return (
+    <section className="mt-6 space-y-3">
+      <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
+        <Award className="h-5 w-5 text-primary" />
+        Chứng chỉ của bạn
+      </h2>
+
+      {query.isLoading && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-48 animate-pulse rounded-card bg-surface-2" />
+          ))}
+        </div>
+      )}
+
+      {query.isError && (
+        <Card className="border-error/30 bg-error/5">
+          <CardContent className="flex items-center justify-between py-4 text-sm">
+            <span className="text-error">Không tải được danh sách chứng chỉ</span>
+            <Button variant="outline" size="sm" onClick={() => query.refetch()}>
+              Thử lại
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {query.data && query.data.length === 0 && (
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
+            <Award className="h-10 w-10 text-muted opacity-60" />
+            <p className="text-sm font-semibold text-foreground">Chưa có chứng chỉ nào</p>
+            <p className="max-w-sm text-xs text-muted">
+              Hoàn thành 100% bài giảng trong một khoá học để nhận chứng chỉ.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {query.data && query.data.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {query.data.map((c) => (
+            <CertificateCard key={c.id} cert={c} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CertificateCard({ cert }: { cert: MyCertificate }) {
+  const [copying, setCopying] = useState(false);
+
+  const statusTone: 'success' | 'warning' | 'error' =
+    cert.status === 'ACTIVE' ? 'success' : cert.status === 'EXPIRED' ? 'warning' : 'error';
+  const statusLabel =
+    cert.status === 'ACTIVE'
+      ? 'Còn hiệu lực'
+      : cert.status === 'EXPIRED'
+        ? 'Hết hạn'
+        : 'Đã thu hồi';
+
+  const copyVerifyLink = async () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://lms.local';
+    const url = `${origin}/verify/${cert.code}`;
+    try {
+      setCopying(true);
+      await navigator.clipboard.writeText(url);
+      toast.success('Đã copy link xác thực');
+    } catch {
+      toast.error('Không copy được — thử chọn và copy tay nhé');
+    } finally {
+      setCopying(false);
+    }
+  };
+
+  return (
+    <Card className="flex flex-col overflow-hidden">
+      <div className="relative aspect-[16/9] w-full bg-gradient-to-br from-primary/15 via-surface-2 to-secondary/10">
+        {cert.course.thumbnailUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={cert.course.thumbnailUrl}
+            alt={cert.course.title}
+            className="h-full w-full object-cover opacity-80"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-primary/40">
+            <GraduationCap className="h-14 w-14" />
+          </div>
+        )}
+        <div className="absolute right-2 top-2">
+          <Badge tone={statusTone}>{statusLabel}</Badge>
+        </div>
+      </div>
+      <CardContent className="flex flex-1 flex-col gap-3 p-4">
+        <div className="min-w-0">
+          <h3 className="line-clamp-2 text-sm font-semibold text-foreground">
+            {cert.course.title}
+          </h3>
+          <p className="mt-1 truncate font-mono text-[11px] text-muted">{cert.code}</p>
+          <p className="mt-0.5 text-xs text-muted">
+            Cấp ngày {new Date(cert.issuedAt).toLocaleDateString('vi-VN')}
+          </p>
+        </div>
+        <div className="mt-auto flex flex-wrap gap-2">
+          <Button asChild size="sm" variant="outline" className="flex-1 min-w-[120px]">
+            <Link href={`/student/certificates/${cert.id}/print`} target="_blank">
+              <Printer className="h-3.5 w-3.5" />
+              Tải PDF
+            </Link>
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex-1 min-w-[120px]"
+            onClick={copyVerifyLink}
+            disabled={copying}
+          >
+            <LinkIcon className="h-3.5 w-3.5" />
+            Copy link
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
