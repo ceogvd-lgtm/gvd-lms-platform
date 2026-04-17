@@ -1,5 +1,5 @@
 import type { JwtPayload } from '@lms/types';
-import { Body, Controller, Delete, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
 
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
@@ -14,6 +14,18 @@ export class EnrollmentsController {
   @HttpCode(HttpStatus.CREATED)
   enroll(@CurrentUser() user: JwtPayload, @Body() dto: CreateEnrollmentDto) {
     return this.enrollments.enroll({ id: user.sub, role: user.role }, dto);
+  }
+
+  /**
+   * GET /enrollments/me — student-dashboard payload: every enrollment
+   * the current user has, plus per-course progress % and a
+   * "next lesson" id so the Tiếp tục học button has a jump target.
+   * Available to any authenticated user (STUDENT + instructors/admins
+   * who also happen to be enrolled in courses for their own training).
+   */
+  @Get('me')
+  listMine(@CurrentUser() user: JwtPayload) {
+    return this.enrollments.listMine(user.sub);
   }
 
   @Delete(':id')

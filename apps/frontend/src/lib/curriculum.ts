@@ -264,3 +264,39 @@ export const lessonsApi = {
   getContext: (id: string, token: string) =>
     api<LessonContext>(`/lessons/${id}/context`, { token }),
 };
+
+// =====================================================
+// Enrollments
+// =====================================================
+
+export interface MyEnrollment {
+  enrollmentId: string;
+  enrolledAt: string;
+  completedAt: string | null;
+  course: {
+    id: string;
+    title: string;
+    description: string | null;
+    thumbnailUrl: string | null;
+    status: CourseStatus;
+  };
+  totalLessons: number;
+  completedLessons: number;
+  /** 0–100 */
+  progress: number;
+  /** First non-completed lesson in the course, or null if course has no lessons. */
+  nextLessonId: string | null;
+  nextLessonTitle: string | null;
+}
+
+export const enrollmentsApi = {
+  /** GET /enrollments/me — my enrollments + per-course progress for the dashboard. */
+  me: (token: string) => api<MyEnrollment[]>('/enrollments/me', { token }),
+
+  enroll: (courseId: string, token: string) =>
+    api<{ id: string }>('/enrollments', {
+      method: 'POST',
+      body: { courseId },
+      token,
+    }),
+};
