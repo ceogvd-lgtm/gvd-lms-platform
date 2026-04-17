@@ -39,9 +39,9 @@ export class PracticeContentsController {
     private readonly webgl: WebGLUploadService,
   ) {}
 
-  // ---------- Phase 10 (unchanged) ----------
+  // ---------- Phase 10 (Phase 14 — open for STUDENT read) ----------
   @Get('lessons/:lessonId/practice')
-  @Roles(Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
+  @Roles(Role.STUDENT, Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
   get(@CurrentUser() user: JwtPayload, @Param('lessonId') lessonId: string) {
     return this.practice.findByLesson({ id: user.sub, role: user.role }, lessonId);
   }

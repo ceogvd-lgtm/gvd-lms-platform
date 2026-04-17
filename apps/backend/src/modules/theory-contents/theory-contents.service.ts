@@ -114,7 +114,14 @@ export class TheoryContentsService {
   // GET — returns null if no content exists yet
   // =====================================================
   async findByLesson(actor: Actor, lessonId: string): Promise<TheoryContentDto | null> {
-    await this.assertLessonOwnership(actor, lessonId);
+    // STUDENTS can read content for any non-deleted lesson (enrollment
+    // is enforced at the course/catalog level, not per-fetch). Owner/admin
+    // check still applies to writes — this is the read path only.
+    if (actor.role === Role.STUDENT) {
+      await this.assertLessonExists(lessonId);
+    } else {
+      await this.assertLessonOwnership(actor, lessonId);
+    }
     return this.prisma.client.theoryContent.findUnique({
       where: { lessonId },
     }) as Promise<TheoryContentDto | null>;

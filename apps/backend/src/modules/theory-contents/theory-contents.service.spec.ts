@@ -76,9 +76,15 @@ describe('TheoryContentsService', () => {
       await expect(service.findByLesson(INSTR, 'l-1')).rejects.toThrow(ForbiddenException);
     });
 
-    it('rejects STUDENT regardless of ownership', async () => {
-      mockLessonOwnedBy(STUDENT.id);
-      await expect(service.findByLesson(STUDENT, 'l-1')).rejects.toThrow(ForbiddenException);
+    // Phase 14 change: STUDENT now reads theory content so the student
+    // lesson page can render the video/SCORM/PPT player. Service falls
+    // back to lesson-exists check for this role; write paths still
+    // enforce instructor ownership.
+    it('allows STUDENT to read (Phase 14 student lesson page)', async () => {
+      mockLessonOwnedBy(INSTR.id); // ownership irrelevant for student
+      prismaMock.client.theoryContent.findUnique.mockResolvedValue({ id: 't-1' });
+      const result = await service.findByLesson(STUDENT, 'l-1');
+      expect(result).toEqual({ id: 't-1' });
     });
 
     it('allows ADMIN even when not owner', async () => {

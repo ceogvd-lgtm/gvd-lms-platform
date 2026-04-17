@@ -55,7 +55,19 @@ export class PracticeContentsService {
   }
 
   async findByLesson(actor: Actor, lessonId: string): Promise<PracticeContentDto | null> {
-    await this.assertLessonOwnership(actor, lessonId);
+    // STUDENT read path — same rationale as theory-contents.findByLesson:
+    // bypass instructor ownership, just confirm the lesson exists.
+    if (actor.role === Role.STUDENT) {
+      const lesson = await this.prisma.client.lesson.findUnique({
+        where: { id: lessonId },
+        select: { id: true, isDeleted: true },
+      });
+      if (!lesson || lesson.isDeleted) {
+        throw new NotFoundException('Không tìm thấy bài giảng');
+      }
+    } else {
+      await this.assertLessonOwnership(actor, lessonId);
+    }
     return this.prisma.client.practiceContent.findUnique({
       where: { lessonId },
     }) as Promise<PracticeContentDto | null>;
