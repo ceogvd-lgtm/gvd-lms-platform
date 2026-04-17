@@ -1,6 +1,6 @@
 import type { JwtPayload } from '@lms/types';
 import { Role } from '@lms/types';
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
 
 import { Roles } from '../../common/rbac/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -11,11 +11,12 @@ import { PracticeService } from './practice.service';
 /**
  * Virtual-lab routes (Phase 13).
  *
- *   POST  /practice/start                  STUDENT+ — create attempt
- *   POST  /practice/action                 STUDENT+ — append event
- *   POST  /practice/complete               STUDENT+ — finalise + grade
- *   GET   /practice/:lessonId/attempts     STUDENT sees own · INSTRUCTOR+ sees all
- *   GET   /practice/:lessonId/analytics    INSTRUCTOR own · ADMIN+
+ *   POST  /practice/start                           STUDENT+ — create attempt
+ *   POST  /practice/action                          STUDENT+ — append event
+ *   POST  /practice/complete                        STUDENT+ — finalise + grade
+ *   GET   /practice/:lessonId/my-attempts           Any authenticated — caller's own
+ *   GET   /practice/:lessonId/attempts?studentId=x  INSTRUCTOR+ only — cross-student
+ *   GET   /practice/:lessonId/analytics             INSTRUCTOR own · ADMIN+
  */
 @Controller('practice')
 export class PracticeController {
@@ -42,10 +43,35 @@ export class PracticeController {
     return this.practice.completeAttempt({ id: user.sub, role: user.role }, dto);
   }
 
-  @Get(':lessonId/attempts')
+  /**
+   * Student lesson page calls this — always scoped to the current user.
+   * Previously the frontend called `/attempts` which, when the caller
+   * was an admin browsing as a student, returned every student's rows
+   * and mis-calculated the "attempts used" badge on the screen.
+   */
+  @Get(':lessonId/my-attempts')
   @Roles(Role.STUDENT, Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
-  attempts(@CurrentUser() user: JwtPayload, @Param('lessonId') lessonId: string) {
-    return this.practice.listAttempts({ id: user.sub, role: user.role }, lessonId);
+  myAttempts(@CurrentUser() user: JwtPayload, @Param('lessonId') lessonId: string) {
+    return this.practice.listMyAttempts(user.sub, lessonId);
+  }
+
+  /**
+   * Cross-student view used by `/instructor/analytics`. Restricted to
+   * INSTRUCTOR+ (and `listAttempts` asserts INSTRUCTORs own the course).
+   * Optional `?studentId=x` narrows to a single student for drill-down.
+   */
+  @Get(':lessonId/attempts')
+  @Roles(Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
+  attempts(
+    @CurrentUser() user: JwtPayload,
+    @Param('lessonId') lessonId: string,
+    @Query('studentId') studentId?: string,
+  ) {
+    return this.practice.listAttempts(
+      { id: user.sub, role: user.role },
+      lessonId,
+      studentId?.trim() || undefined,
+    );
   }
 
   @Get(':lessonId/analytics')

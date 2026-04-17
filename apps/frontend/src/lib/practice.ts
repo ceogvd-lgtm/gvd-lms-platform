@@ -213,8 +213,25 @@ export const practiceApi = {
       token,
     }),
 
-  listAttempts: (lessonId: string, token: string) =>
-    api<AttemptRow[]>(`/practice/${lessonId}/attempts`, { token }),
+  /**
+   * Current user's attempts only — safe to call from the student lesson
+   * page regardless of the caller's role. Returns 200 empty array if the
+   * user hasn't started an attempt yet.
+   */
+  myAttempts: (lessonId: string, token: string) =>
+    api<AttemptRow[]>(`/practice/${lessonId}/my-attempts`, { token }),
+
+  /**
+   * Cross-student view for INSTRUCTOR+ only (backend asserts).
+   * `studentId` filters to a single learner — used by the analytics
+   * drill-down. Omit to fetch every student's attempt on that lesson.
+   */
+  listAttempts: (lessonId: string, token: string, studentId?: string) =>
+    api<AttemptRow[]>(
+      `/practice/${lessonId}/attempts` +
+        (studentId ? `?studentId=${encodeURIComponent(studentId)}` : ''),
+      { token },
+    ),
 
   getAnalytics: (lessonId: string, token: string) =>
     api<PracticeAnalytics>(`/practice/${lessonId}/analytics`, { token }),
