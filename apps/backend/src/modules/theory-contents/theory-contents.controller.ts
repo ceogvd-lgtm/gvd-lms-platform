@@ -59,9 +59,13 @@ class ConvertPptDto {
 export class TheoryContentsController {
   constructor(private readonly theory: TheoryContentsService) {}
 
-  // ---------- Phase 10 (unchanged) ----------
+  // ---------- Phase 10 (Phase 14 — open for STUDENT read) ----------
+  // Student lesson page needs to fetch theory content to render the
+  // video/SCORM/PPT player. Service still asserts lesson exists and is
+  // not soft-deleted; INSTRUCTOR ownership check applies only to
+  // write paths (PUT / PATCH / POST upload).
   @Get()
-  @Roles(Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
+  @Roles(Role.STUDENT, Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
   get(@CurrentUser() user: JwtPayload, @Param('lessonId') lessonId: string) {
     return this.theory.findByLesson({ id: user.sub, role: user.role }, lessonId);
   }
