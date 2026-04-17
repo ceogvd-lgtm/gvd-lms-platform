@@ -2,7 +2,7 @@
 
 import { Badge, Button } from '@lms/ui';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, Edit, Eye, Grid3x3, List, Plus } from 'lucide-react';
+import { Archive, Edit, Eye, Grid3x3, List, Plus, Send } from 'lucide-react';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -71,6 +71,24 @@ export default function InstructorCoursesPage() {
       invalidate();
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Lưu trữ thất bại';
+      toast.error(msg);
+    }
+  };
+
+  const handleSubmitForReview = async (course: Course) => {
+    if (
+      !confirm(
+        `Gửi khoá học "${course.title}" cho Admin duyệt? Sau khi gửi, bạn không chỉnh sửa cấu trúc được đến khi Admin phản hồi.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await coursesApi.updateStatus(course.id, 'SUBMIT', accessToken!);
+      toast.success('Đã gửi khoá học cho Admin duyệt');
+      invalidate();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Gửi duyệt thất bại';
       toast.error(msg);
     }
   };
@@ -191,6 +209,7 @@ export default function InstructorCoursesPage() {
               key={c.id}
               course={c}
               onArchive={handleArchive}
+              onSubmitForReview={handleSubmitForReview}
               editHref={`/admin/curriculum?courseId=${c.id}`}
             />
           ))}
@@ -241,6 +260,17 @@ export default function InstructorCoursesPage() {
                         <Edit className="h-3.5 w-3.5" />
                         Sửa
                       </Link>
+                      {c.status === 'DRAFT' && (
+                        <button
+                          type="button"
+                          onClick={() => handleSubmitForReview(c)}
+                          className="inline-flex h-8 items-center gap-1 rounded-button bg-primary px-2.5 text-xs font-semibold text-white hover:bg-primary/90 transition-colors"
+                          title="Gửi duyệt cho Admin"
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                          Gửi duyệt
+                        </button>
+                      )}
                       {c.status !== 'ARCHIVED' && (
                         <button
                           type="button"
