@@ -389,9 +389,31 @@ export default function CreateCoursePage() {
               <Save className="h-4 w-4" />
               Lưu nháp
             </Button>
-            <Button onClick={handleSubmitForReview}>
+            <Button variant="outline" onClick={handleSubmitForReview}>
               <Send className="h-4 w-4" />
               Gửi duyệt Admin
+            </Button>
+            {/*
+              After the wizard has persisted the skeleton we jump straight
+              to the first lesson's editor so the instructor can upload
+              content (SCORM / Video / PPT / WebGL) without manually
+              hunting the lesson id via the courses list. Disabled when
+              the draft still has 0 lessons.
+            */}
+            <Button
+              onClick={() => {
+                const firstLessonId = chapters[0]?.lessons[0]?.id;
+                if (!firstLessonId) {
+                  toast.error('Hãy thêm ít nhất 1 bài giảng ở bước 2 trước');
+                  return;
+                }
+                router.push(`/instructor/lessons/${firstLessonId}/edit`);
+              }}
+              disabled={!chapters[0]?.lessons[0]?.id}
+            >
+              <Upload className="h-4 w-4" />
+              Upload nội dung
+              <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         )}
