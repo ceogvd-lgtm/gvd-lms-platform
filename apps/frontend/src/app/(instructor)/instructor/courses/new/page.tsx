@@ -36,7 +36,12 @@ import {
   type LessonType,
 } from '@/lib/curriculum';
 
-const STEPS = ['Thông tin cơ bản', 'Cấu trúc bài học', 'Cài đặt', 'Xem trước & gửi'];
+// The old wizard shipped a 4th "Cài đặt" step that was a pure placeholder
+// for an advanced-settings feature that never got specced. Removed so the
+// wizard is 3 meaningful steps end-to-end. If course-level settings come
+// back they should live on a dedicated post-creation page
+// (`/instructor/courses/:id/settings`) rather than inside the wizard.
+const STEPS = ['Thông tin cơ bản', 'Cấu trúc bài học', 'Xem trước & gửi'];
 
 const AUTO_SAVE_INTERVAL = 30_000; // 30 seconds — per Phase 10 spec
 
@@ -192,7 +197,7 @@ export default function CreateCoursePage() {
 
   const handleBack = () => setStep((s) => Math.max(0, s - 1));
 
-  // ---------- Step 4 actions ----------
+  // ---------- Final step actions (preview) ----------
   const handleSubmitForReview = async () => {
     if (!courseId) return;
     try {
@@ -358,9 +363,7 @@ export default function CreateCoursePage() {
             />
           )}
 
-          {step === 2 && <Step3Settings />}
-
-          {step === 3 && (
+          {step === 2 && (
             <Step4Preview
               title={title}
               description={description}
@@ -722,36 +725,7 @@ function SortableLesson({ lesson, index }: { lesson: DraftLesson; index: number 
 }
 
 // =====================================================
-// Step 3 — settings (placeholder, full impl Phase 11)
-// =====================================================
-function Step3Settings() {
-  return (
-    <div className="space-y-4">
-      <div className="rounded-card bg-warning/10 px-4 py-3 text-sm text-warning">
-        <strong>Phase 10:</strong> Chỉ giữ chỗ cho cài đặt nâng cao. Prerequisite, certificate
-        criteria và thời hạn sẽ được implement ở Phase 11. Hiện tại bạn có thể chuyển sang bước Xem
-        trước.
-      </div>
-      <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <li className="rounded-card border border-dashed border-border p-4 text-sm text-muted">
-          🔒 Khoá học tiên quyết — Phase 11
-        </li>
-        <li className="rounded-card border border-dashed border-border p-4 text-sm text-muted">
-          📅 Thời hạn hoàn thành — Phase 11
-        </li>
-        <li className="rounded-card border border-dashed border-border p-4 text-sm text-muted">
-          🏆 Tiêu chí cấp chứng chỉ — Phase 11
-        </li>
-        <li className="rounded-card border border-dashed border-border p-4 text-sm text-muted">
-          👥 Giới hạn số học viên — Phase 11
-        </li>
-      </ul>
-    </div>
-  );
-}
-
-// =====================================================
-// Step 4 — preview
+// Step 3 — preview (was Step 4 before the placeholder "Cài đặt" got cut)
 // =====================================================
 function Step4Preview({
   title,
