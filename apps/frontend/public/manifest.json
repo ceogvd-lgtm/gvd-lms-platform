@@ -1,0 +1,20 @@
+{
+  "name": "GVD next-gen — LMS",
+  "short_name": "GVD LMS",
+  "description": "Hệ thống đào tạo thực hành kỹ thuật công nghiệp GVD — tích hợp AI và mô phỏng 3D",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0F172A",
+  "theme_color": "#1E40AF",
+  "icons": [
+    {
+      "src": "/logo-gvd.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "lang": "vi",
+  "categories": ["education"]
+}

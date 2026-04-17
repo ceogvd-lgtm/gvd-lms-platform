@@ -186,6 +186,61 @@ export class CoursesService {
   // =====================================================
   // FIND ONE (with chapters + lessons)
   // =====================================================
+  /**
+   * GET /courses/:id/lessons — flat ordered lesson list, optionally
+   * filtered to only lessons with PracticeContent. Used by the
+   * instructor analytics Thực-hành-ảo picker (Phase 13 carry-over).
+   */
+  async listLessons(
+    actor: Actor,
+    courseId: string,
+    withPractice: boolean,
+  ): Promise<
+    Array<{
+      id: string;
+      title: string;
+      type: 'THEORY' | 'PRACTICE';
+      chapterTitle: string;
+      hasPractice: boolean;
+    }>
+  > {
+    const course = await this.prisma.client.course.findUnique({
+      where: { id: courseId },
+      select: {
+        id: true,
+        isDeleted: true,
+        instructorId: true,
+      },
+    });
+    if (!course || course.isDeleted) throw new NotFoundException('Không tìm thấy khoá học');
+    if (!this.isOwnerOrAdmin(actor, course.instructorId)) {
+      throw new ForbiddenException('Chỉ giảng viên sở hữu hoặc ADMIN+ mới xem được');
+    }
+
+    const chapters = await this.prisma.client.chapter.findMany({
+      where: { courseId },
+      orderBy: { order: 'asc' },
+      include: {
+        lessons: {
+          where: { isDeleted: false },
+          orderBy: { order: 'asc' },
+          include: { practiceContent: { select: { id: true } } },
+        },
+      },
+    });
+
+    const flat = chapters.flatMap((c) =>
+      c.lessons.map((l) => ({
+        id: l.id,
+        title: l.title,
+        type: l.type as 'THEORY' | 'PRACTICE',
+        chapterTitle: c.title,
+        hasPractice: !!l.practiceContent,
+      })),
+    );
+    return withPractice ? flat.filter((l) => l.hasPractice) : flat;
+  }
+
   async findOne(actor: Actor, id: string) {
     const course = await this.prisma.client.course.findUnique({
       where: { id },

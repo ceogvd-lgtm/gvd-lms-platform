@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { XpService } from '../students/xp.service';
 
 import { LessonsService } from './lessons.service';
 
@@ -39,6 +40,7 @@ describe('LessonsService — getContext', () => {
         LessonsService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { log: jest.fn() } },
+        { provide: XpService, useValue: { award: jest.fn() } },
       ],
     }).compile();
     service = mod.get(LessonsService);

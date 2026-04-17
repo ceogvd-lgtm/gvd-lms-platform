@@ -1,6 +1,6 @@
 # CONTEXT.md — Dự Án LMS
 
-Cập nhật ngày: 16/04/2026
+Cập nhật ngày: 17/04/2026
 
 ## ĐANG LÀM
 
@@ -24,6 +24,7 @@ Phase 14 — Student Dashboard & Learning Experience
 ### ✅ Phase 03 — Auth & Security
 
 - 10 endpoints /auth/\* | JWT 15min/7d | 2FA OTP 6 số
+- Silent token refresh: 401 → auto refresh → retry
 - Xong ngày: 15/04/2026
 
 ### ✅ Phase 04 — RBAC & 4 Luật
@@ -107,12 +108,22 @@ Phase 14 — Student Dashboard & Learning Experience
 - Instructor: tab Thực hành ảo trong /instructor/lessons/:id/edit
 - Student: tab Thực hành ảo trong /student/lessons/[id] (pre-lab/run/post-lab)
 - Analytics: tab Thực hành ảo trong /instructor/analytics
-- 27 unit tests mới: 22 suites, 216/216 tests PASS | 25 routes build OK
-- Known issues → Phase 14:
-  - Analytics lesson picker cần GET /courses/:id/lessons
-  - WebGL iframe preview TTL 7 ngày
-  - Multi-tab timer không sync
-- Commits: 41b1895 → 6f7063c | Xong ngày: 16/04/2026
+- 27 unit tests mới: 22 suites, 221/221 tests PASS | 26 routes build OK
+- Session fixes (17/04):
+  - Google OAuth callback + /auth/me endpoint
+  - Logout flow sidebar + header + dashboard layout auth guard
+  - Dark mode default + student menu "Sắp có"
+  - WebGL extract Windows race condition
+  - SCORM same-origin proxy + public bucket
+  - Unity .gz Content-Encoding headers
+  - GET /lessons/:id/context (sidebar outline + prev/next)
+  - Split /practice/:id/my-attempts vs /attempts
+  - Nút "Gửi duyệt" trên Draft course card
+  - Nút "Upload nội dung" shortcut wizard step 4
+  - Xoá placeholder Step 3 "Cài đặt" wizard
+  - /student/dashboard stub (enrollments list)
+  - seed-demo.ts script idempotent
+- Commits: 41b1895 → 3f06d3b | Xong ngày: 17/04/2026
 
 ## LƯU Ý QUAN TRỌNG
 
@@ -121,22 +132,52 @@ Phase 14 — Student Dashboard & Learning Experience
 - Sau khi sửa packages/types hoặc packages/database phải build trước
 - Backend hot reload: ts-node-dev (KHÔNG dùng tsx)
 - Seed SUPER_ADMIN: pnpm --filter @lms/database db:seed
+- Seed demo data: pnpm --filter @lms/database exec tsx prisma/seed-demo.ts
 - API prefix luôn là /api/v1/ (KHÔNG phải /api/)
 - INSTRUCTOR: Tạo + Sửa + Lưu trữ — TUYỆT ĐỐI KHÔNG có nút Xoá
 - Hydration: layout dùng useHasHydrated() trước khi check role
 - TipTap body lưu JSON ProseMirror — auto-save 30s
 - KHÔNG dùng curl từ Git Bash Windows để POST tiếng Việt
-- Main branch đã merge đủ Phase 01-13
+- Main branch đã merge đủ Phase 01-13 + session fixes (commit: 3f06d3b)
 - Unity WebGL tên project "Builds":
   Builds.loader.js / Builds.data / Builds.framework.js / Builds.wasm
 - LMS Bridge: SendMessage('LMSBridge', 'ReceiveConfig', JSON.stringify(config))
-- Phase 14: cần thêm model LessonNote + Discussion + DiscussionReply + StudentXP
-- Phase 14: cần implement POST /quiz-attempts (quiz grading backend thật)
-- Phase 14: cần GET /lessons/:id/context (courseId, prev/next, outline)
-- Phase 14: cần GET /courses/:id/lessons (fix analytics lesson picker Phase 13)
-- Phase 14: Tab Hỏi đáp + nâng cấp Ghi chú lên DB
+- GET /lessons/:id/context ĐÃ CÓ → sidebar outline + prev/next hoạt động
+- /student/dashboard ĐÃ CÓ stub cơ bản → Phase 14 mở rộng
+- Google OAuth ĐÃ CÓ: GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET trong .env
+- ceo.gvd@gmail.com đã là SUPER_ADMIN trong DB
+- 26 routes (thêm /student/dashboard so với Phase 13)
+
+## PHASE 14 — CẦN LÀM
+
+- Model mới cần migration:
+  - LessonNote (lessonId, studentId, content Json, updatedAt)
+  - Discussion (lessonId, authorId, content, isDeleted)
+  - DiscussionReply (discussionId, authorId, content, isDeleted)
+  - StudentXP (studentId unique, totalXP, level)
+- Endpoints mới:
+  - POST /quiz-attempts (quiz grading backend thật, thay auto-pass)
+  - GET /quiz-attempts/:quizId (lịch sử làm bài)
+  - GET/PUT /lessons/:id/notes (ghi chú lên DB, thay localStorage)
+  - GET/POST /lessons/:id/discussions (hỏi đáp)
+  - POST /discussions/:id/replies
+  - GET /students/dashboard (data tổng hợp)
+  - GET /students/streak (streak + heatmap)
+  - GET /students/my-learning (cây học tập)
+  - GET /students/progress (charts data)
+  - GET /students/xp (XP + level)
+  - GET /courses/:id/lessons (fix analytics lesson picker Phase 13)
+- Pages mới/mở rộng:
+  - /student/dashboard (mở rộng stub đã có)
+  - /student/my-learning (mới)
+  - /student/progress (mới)
+  - Tab Hỏi đáp trong /student/lessons/[id]
+  - Nâng cấp Tab Ghi chú lên DB sync
+  - Fix Quiz grading thật (thay auto-pass)
+- PWA stub: manifest.json + meta tags
+- XP: +10 complete lesson, +20 pass quiz lần đầu, +100 complete course
 
 ## LỆNH ĐÃ VERIFY
 
-pnpm --filter @lms/backend test # 22 suites, 216 tests PASS
-pnpm --filter @lms/frontend build # 25 routes built
+pnpm --filter @lms/backend test # 23 suites, 221 tests PASS
+pnpm --filter @lms/frontend build # 26 routes built

@@ -38,6 +38,21 @@ export class CoursesController {
     return this.courses.findOne({ id: user.sub, role: user.role }, id);
   }
 
+  /**
+   * Phase 13 carry-over — analytics tab "Thực hành ảo" uses this to
+   * populate its lesson picker with only the lessons that actually have
+   * PracticeContent. Reused by the student /my-learning tree too.
+   */
+  @Get(':id/lessons')
+  @Roles(Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
+  listLessons(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Query('withPractice') withPractice?: string,
+  ) {
+    return this.courses.listLessons({ id: user.sub, role: user.role }, id, withPractice === 'true');
+  }
+
   @Get(':id/students')
   listStudents(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     return this.courses.listStudents({ id: user.sub, role: user.role }, id);

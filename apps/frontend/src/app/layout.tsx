@@ -24,6 +24,16 @@ export const metadata: Metadata = {
   icons: {
     icon: '/logo-gvd.svg',
   },
+  // Phase 14 PWA stub — manifest + theme-color in meta. A real Service
+  // Worker lands in Phase 18; for now this is enough for "Add to home
+  // screen" on mobile + the system chrome picks up the brand blue.
+  manifest: '/manifest.json',
+  themeColor: '#1E40AF',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'GVD LMS',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

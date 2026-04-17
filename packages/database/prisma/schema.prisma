@@ -108,6 +108,12 @@ model User {
   auditLogs         AuditLog[]
   notifications     Notification[]
 
+  // Phase 14 — Student Dashboard & Learning Experience
+  lessonNotes         LessonNote[]
+  discussionsAuthored Discussion[]        @relation("DiscussionAuthor")
+  discussionReplies   DiscussionReply[]   @relation("DiscussionReplyAuthor")
+  xp                  StudentXP?
+
   @@index([email])
   @@index([role])
   @@map("users")
@@ -208,6 +214,10 @@ model Lesson {
   attachments     LessonAttachment[]
   quizzes         Quiz[]
   progress        LessonProgress[]
+
+  // Phase 14 — per-student notes + per-lesson Q&A threads
+  notes       LessonNote[]
+  discussions Discussion[]
 
   @@index([chapterId])
   @@index([type])
@@ -551,4 +561,70 @@ model SystemSetting {
   updatedAt   DateTime @updatedAt
 
   @@map("system_settings")
+}
+
+// =========================================================
+// STUDENT DASHBOARD & LEARNING EXPERIENCE (Phase 14)
+// =========================================================
+// - LessonNote: per-student rich-text notes per lesson (TipTap JSON)
+// - Discussion + DiscussionReply: per-lesson Q&A threads with soft delete
+// - StudentXP: lifetime XP + computed level for the gamification overlay
+
+model LessonNote {
+  id        String   @id @default(cuid())
+  lessonId  String
+  studentId String
+  content   Json // ProseMirror JSON — same shape TheoryContent.body uses
+  updatedAt DateTime @updatedAt
+
+  lesson  Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  student User   @relation(fields: [studentId], references: [id])
+
+  @@unique([lessonId, studentId])
+  @@map("lesson_notes")
+}
+
+model Discussion {
+  id        String   @id @default(cuid())
+  lessonId  String
+  authorId  String
+  content   String
+  isDeleted Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lesson  Lesson            @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  author  User              @relation("DiscussionAuthor", fields: [authorId], references: [id])
+  replies DiscussionReply[]
+
+  @@index([lessonId])
+  @@index([authorId])
+  @@map("discussions")
+}
+
+model DiscussionReply {
+  id           String   @id @default(cuid())
+  discussionId String
+  authorId     String
+  content      String
+  isDeleted    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  discussion Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  author     User       @relation("DiscussionReplyAuthor", fields: [authorId], references: [id])
+
+  @@index([discussionId])
+  @@map("discussion_replies")
+}
+
+model StudentXP {
+  id        String   @id @default(cuid())
+  studentId String   @unique
+  totalXP   Int      @default(0)
+  level     Int      @default(1)
+  updatedAt DateTime @updatedAt
+
+  student User @relation(fields: [studentId], references: [id])
+
+  @@map("student_xp")
 }

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
 import { AppHeader } from '@/components/dashboard/app-header';
+import { StudentBottomNav } from '@/components/student/student-bottom-nav';
 import { useAuthStore, useHasHydrated } from '@/lib/auth-store';
 
 /**
@@ -71,6 +72,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
           </motion.div>
         </AnimatePresence>
       </main>
+      <StudentBottomNav />
     </div>
   );
 }
