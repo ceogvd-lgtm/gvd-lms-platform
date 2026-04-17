@@ -2,10 +2,11 @@
 
 import { Badge, Button, Card, CardContent } from '@lms/ui';
 import { useQuery } from '@tanstack/react-query';
-import { BookOpen, Flame, GraduationCap, Play, Sparkles, TrendingUp, Trophy } from 'lucide-react';
+import { Bell, BookOpen, Flame, GraduationCap, Play, TrendingUp, Trophy } from 'lucide-react';
 import Link from 'next/link';
 
 import { useAuthStore } from '@/lib/auth-store';
+import { notificationsApi, notificationTypeLabel, type AppNotification } from '@/lib/notifications';
 import { studentsApi, type DashboardPayload } from '@/lib/students';
 
 /**
@@ -17,7 +18,7 @@ import { studentsApi, type DashboardPayload } from '@/lib/students';
  *   3. Enrolled courses grid
  *   4. "Next lesson" CTA banner
  *   5. Recent quiz scores (sparkline)
- *   6. Recent notifications (stub — Phase 7 socket feeds drive it)
+ *   6. Recent notifications — last 3 via GET /notifications?limit=3
  *
  * All data comes from GET /api/v1/students/dashboard (single round-trip
  * so the first paint is fast). Individual components can still hit their
@@ -138,6 +139,15 @@ function DashboardBody({ data }: { data: DashboardPayload }) {
           Điểm gần đây
         </h2>
         <RecentScoresCard scores={data.recentScores} />
+      </section>
+
+      {/* Row 6 — Recent notifications (last 3) */}
+      <section className="space-y-3">
+        <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
+          <Bell className="h-5 w-5 text-primary" />
+          Thông báo gần đây
+        </h2>
+        <RecentNotificationsCard />
       </section>
     </div>
   );
@@ -360,6 +370,110 @@ function RecentScoresCard({ scores }: { scores: DashboardPayload['recentScores']
 }
 
 // =====================================================
+// Row 6 — Recent notifications (last 3)
+// =====================================================
+
+function RecentNotificationsCard() {
+  const accessToken = useAuthStore((s) => s.accessToken);
+  // Own query (not part of /students/dashboard so this card can refresh in
+  // isolation when Socket.io pushes a new notification — Phase 14 gap #1).
+  const query = useQuery({
+    queryKey: ['student-recent-notifications'],
+    queryFn: () => notificationsApi.list({ limit: 3 }, accessToken!),
+    enabled: !!accessToken,
+    // Poll every 30s so we catch notifications arriving from servers that
+    // don't bubble through the bell socket (email-only types, etc.).
+    refetchInterval: 30_000,
+  });
+
+  if (query.isLoading) {
+    return (
+      <Card>
+        <CardContent className="space-y-2 p-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-10 animate-pulse rounded bg-surface-2" />
+          ))}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (query.isError) {
+    return (
+      <Card className="border-error/30 bg-error/5">
+        <CardContent className="flex items-center justify-between py-4 text-sm">
+          <span className="text-error">Không tải được thông báo</span>
+          <Button variant="outline" size="sm" onClick={() => query.refetch()}>
+            Thử lại
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const items = query.data?.data ?? [];
+
+  if (items.length === 0) {
+    return (
+      <Card className="border-dashed">
+        <CardContent className="py-8 text-center text-sm text-muted">
+          Chưa có thông báo nào.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardContent className="divide-y divide-border p-0">
+        {items.map((n) => (
+          <NotificationRow key={n.id} n={n} />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function NotificationRow({ n }: { n: AppNotification }) {
+  return (
+    <div className="flex items-start gap-3 px-4 py-3">
+      <span
+        className={
+          'mt-1.5 h-2 w-2 shrink-0 rounded-full ' + (n.isRead ? 'bg-transparent' : 'bg-primary')
+        }
+        aria-hidden
+      />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p
+            className={
+              'truncate text-sm ' + (n.isRead ? 'text-muted' : 'font-semibold text-foreground')
+            }
+          >
+            {n.title}
+          </p>
+          <Badge tone="info" className="shrink-0 text-[10px]">
+            {notificationTypeLabel(n.type)}
+          </Badge>
+        </div>
+        <p className="mt-0.5 line-clamp-1 text-xs text-muted">{n.message}</p>
+        <p className="mt-1 text-[11px] text-muted">{formatRelative(n.createdAt)}</p>
+      </div>
+    </div>
+  );
+}
+
+function formatRelative(iso: string): string {
+  const d = new Date(iso);
+  const diff = (Date.now() - d.getTime()) / 1000;
+  if (diff < 60) return 'vừa xong';
+  if (diff < 3600) return `${Math.floor(diff / 60)} phút trước`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} giờ trước`;
+  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)} ngày trước`;
+  return d.toLocaleDateString('vi-VN');
+}
+
+// =====================================================
 // Loading skeleton
 // =====================================================
 function LoadingGrid() {
@@ -399,4 +513,3 @@ function pickQuote(seed: string): string {
   for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
   return QUOTES[hash % QUOTES.length]!;
 }
-void Sparkles; // silence unused-import lint while icon stays reserved for row 6

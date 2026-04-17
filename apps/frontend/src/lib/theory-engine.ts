@@ -237,9 +237,19 @@ export const videoApi = {
 // Lesson-engine helpers (Phase 12 additions on lessons module)
 // =====================================================
 
+/**
+ * Shape returned by POST /lessons/:id/complete since Phase 14. Extends
+ * LessonProgressRow with an `xpAwarded` object so the client can fire
+ * +XP toasts for the exact awards that happened (lesson only, lesson +
+ * course cascade, or nothing if the student re-completed).
+ */
+export interface LessonCompletionResult extends LessonProgressRow {
+  xpAwarded: { lesson: number; course: number };
+}
+
 export const lessonEngineApi = {
   complete: (lessonId: string, token: string) =>
-    api<LessonProgressRow>(`/lessons/${lessonId}/complete`, {
+    api<LessonCompletionResult>(`/lessons/${lessonId}/complete`, {
       method: 'POST',
       token,
     }),

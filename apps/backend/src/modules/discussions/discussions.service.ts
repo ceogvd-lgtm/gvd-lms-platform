@@ -46,6 +46,74 @@ export class DiscussionsService {
   ) {}
 
   // =====================================================
+  // GET /lessons/:id/mentionable — Phase 14 gap #6
+  // =====================================================
+  //
+  // Returns up to 8 users a STUDENT can @-mention in a discussion.
+  // The course instructor is always first so the student always sees
+  // "their teacher" as the top suggestion. Additional ADMIN + other
+  // INSTRUCTOR users are prefix-matched on `q` so the dropdown can
+  // filter as the student types after "@".
+  //
+  // We deliberately DO NOT return STUDENT-role users — student-to-
+  // student mentions aren't useful in the training context and would
+  // leak PII across the class roster to every enrolled user.
+  async getMentionable(
+    lessonId: string,
+    q: string,
+  ): Promise<Array<{ id: string; name: string; role: string; avatar: string | null }>> {
+    const lesson = await this.prisma.client.lesson.findUnique({
+      where: { id: lessonId },
+      select: {
+        id: true,
+        isDeleted: true,
+        chapter: { select: { course: { select: { instructorId: true } } } },
+      },
+    });
+    if (!lesson || lesson.isDeleted) throw new NotFoundException('Không tìm thấy bài giảng');
+
+    const instructorId = lesson.chapter.course.instructorId;
+    const trimmed = q.trim();
+
+    // 1. Always fetch the owning instructor
+    const instructor = await this.prisma.client.user.findUnique({
+      where: { id: instructorId },
+      select: { id: true, name: true, role: true, avatar: true, isBlocked: true },
+    });
+
+    // 2. Prefix-search additional INSTRUCTOR / ADMIN users (cap 7)
+    const others = trimmed
+      ? await this.prisma.client.user.findMany({
+          where: {
+            isBlocked: false,
+            role: { in: [Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN] },
+            NOT: { id: instructorId },
+            name: { contains: trimmed, mode: 'insensitive' },
+          },
+          select: { id: true, name: true, role: true, avatar: true },
+          orderBy: { name: 'asc' },
+          take: 7,
+        })
+      : [];
+
+    const out: Array<{ id: string; name: string; role: string; avatar: string | null }> = [];
+    if (instructor && !instructor.isBlocked) {
+      if (!trimmed || instructor.name.toLowerCase().includes(trimmed.toLowerCase())) {
+        out.push({
+          id: instructor.id,
+          name: instructor.name,
+          role: instructor.role,
+          avatar: instructor.avatar,
+        });
+      }
+    }
+    for (const u of others) {
+      out.push({ id: u.id, name: u.name, role: u.role, avatar: u.avatar });
+    }
+    return out.slice(0, 8);
+  }
+
+  // =====================================================
   // GET /lessons/:id/discussions
   // =====================================================
   async listForLesson(lessonId: string): Promise<DiscussionThread[]> {
@@ -163,7 +231,7 @@ export class DiscussionsService {
       include: {
         author: { select: { id: true } },
         replies: { select: { authorId: true } },
-        lesson: { select: { title: true } },
+        lesson: { select: { id: true, title: true } },
       },
     });
     if (!thread || thread.isDeleted) {
@@ -175,8 +243,16 @@ export class DiscussionsService {
       include: { author: { select: { id: true, name: true, avatar: true, role: true } } },
     });
 
-    // Notify thread author + other repliers (dedup by userId, skip self)
-    const targets = new Set<string>([thread.author.id, ...thread.replies.map((r) => r.authorId)]);
+    // Notify thread author + other repliers + explicit @-mentions (dedup
+    // by userId, skip self). `lessonId` is included so the client-side
+    // Socket.io listener on DiscussionsTab can filter "this event is for
+    // my current lesson" and invalidate the threads query only when
+    // relevant.
+    const targets = new Set<string>([
+      thread.author.id,
+      ...thread.replies.map((r) => r.authorId),
+      ...(dto.mentionUserIds ?? []),
+    ]);
     targets.delete(actor.id);
     for (const userId of targets) {
       this.notifications
@@ -185,7 +261,7 @@ export class DiscussionsService {
           type: 'DISCUSSION_REPLY',
           title: 'Có câu trả lời mới',
           message: `${row.author.name} đã trả lời trong "${thread.lesson.title}"`,
-          data: { discussionId, replyId: row.id },
+          data: { discussionId, replyId: row.id, lessonId: thread.lesson.id },
         })
         .catch(() => undefined);
     }

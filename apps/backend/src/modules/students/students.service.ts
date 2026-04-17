@@ -1,4 +1,4 @@
-import { ProgressStatus } from '@lms/database';
+import { CertificateStatus, ProgressStatus } from '@lms/database';
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -73,6 +73,30 @@ export interface ProgressPayload {
     score: number | null;
   }>;
   classComparison: { myAvg: number; classAvg: number };
+}
+
+/**
+ * One card in the student's certificates gallery (Phase 14 gap #3).
+ *
+ * Students don't need the admin's full detail (revoke reason, expiry
+ * policy, etc.) — just enough to render a card with course title, issue
+ * date, status badge, and a [Tải PDF] / [Copy link] pair. The PDF and
+ * verify URLs are constructed client-side from `code` so this endpoint
+ * is a pure read.
+ */
+export interface MyCertificate {
+  id: string;
+  code: string;
+  issuedAt: Date;
+  status: CertificateStatus;
+  expiresAt: Date | null;
+  course: { id: string; title: string; thumbnailUrl: string | null };
+}
+
+/** Full detail shape for the client-side print page (Ctrl+P → Save PDF). */
+export interface MyCertificateDetail extends MyCertificate {
+  student: { id: string; name: string; email: string };
+  instructor: { id: string; name: string } | null;
 }
 
 // =====================================================
@@ -513,5 +537,72 @@ export class StudentsService {
   // =====================================================
   async getXp(studentId: string): Promise<{ totalXP: number; level: number }> {
     return this.xp.getForStudent(studentId);
+  }
+
+  // =====================================================
+  // GET /students/certificates — gallery for the progress page
+  // =====================================================
+  //
+  // Returns the calling student's own certificates, newest first,
+  // mapped to the slim {@link MyCertificate} shape. We expose this
+  // under /students/* rather than reaching into the admin-only
+  // /admin/certificates controller so the authz rule stays obvious:
+  // the JWT's `sub` is always the scope key — no studentId param
+  // accepted, no way to read someone else's certificates.
+  async getMyCertificates(studentId: string): Promise<MyCertificate[]> {
+    const rows = await this.prisma.client.certificate.findMany({
+      where: { studentId },
+      orderBy: { issuedAt: 'desc' },
+      include: {
+        course: { select: { id: true, title: true, thumbnailUrl: true } },
+      },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      code: r.code,
+      issuedAt: r.issuedAt,
+      status: r.status,
+      expiresAt: r.expiresAt,
+      course: r.course,
+    }));
+  }
+
+  // =====================================================
+  // GET /students/certificates/:id — detail for print view
+  // =====================================================
+  //
+  // Scoped to the caller: if the cert doesn't belong to them we return
+  // null (treated as 404 by the controller) — we never reveal whether
+  // the id exists for another student.
+  async getMyCertificateDetail(studentId: string, id: string): Promise<MyCertificateDetail | null> {
+    const cert = await this.prisma.client.certificate.findUnique({
+      where: { id },
+      include: {
+        student: { select: { id: true, name: true, email: true } },
+        course: {
+          select: {
+            id: true,
+            title: true,
+            thumbnailUrl: true,
+            instructor: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+    if (!cert || cert.studentId !== studentId) return null;
+    return {
+      id: cert.id,
+      code: cert.code,
+      issuedAt: cert.issuedAt,
+      status: cert.status,
+      expiresAt: cert.expiresAt,
+      course: {
+        id: cert.course.id,
+        title: cert.course.title,
+        thumbnailUrl: cert.course.thumbnailUrl,
+      },
+      student: cert.student,
+      instructor: cert.course.instructor,
+    };
   }
 }

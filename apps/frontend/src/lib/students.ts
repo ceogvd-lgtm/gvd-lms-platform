@@ -83,12 +83,29 @@ export interface ProgressPayload {
   classComparison: { myAvg: number; classAvg: number };
 }
 
+export interface MyCertificate {
+  id: string;
+  code: string;
+  issuedAt: string;
+  status: 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+  expiresAt: string | null;
+  course: { id: string; title: string; thumbnailUrl: string | null };
+}
+
+export interface MyCertificateDetail extends MyCertificate {
+  student: { id: string; name: string; email: string };
+  instructor: { id: string; name: string } | null;
+}
+
 export const studentsApi = {
   dashboard: (token: string) => api<DashboardPayload>('/students/dashboard', { token }),
   streak: (token: string) => api<StreakPayload>('/students/streak', { token }),
   myLearning: (token: string) => api<MyLearningNode[]>('/students/my-learning', { token }),
   progress: (token: string) => api<ProgressPayload>('/students/progress', { token }),
   xp: (token: string) => api<{ totalXP: number; level: number }>('/students/xp', { token }),
+  certificates: (token: string) => api<MyCertificate[]>('/students/certificates', { token }),
+  certificateDetail: (id: string, token: string) =>
+    api<MyCertificateDetail>(`/students/certificates/${id}`, { token }),
 };
 
 // =====================================================
@@ -190,21 +207,36 @@ export interface DiscussionThread {
   replies: DiscussionReplyRow[];
 }
 
+export interface MentionSuggestion {
+  id: string;
+  name: string;
+  role: string;
+  avatar: string | null;
+}
+
 export const discussionsApi = {
   list: (lessonId: string, token: string) =>
     api<DiscussionThread[]>(`/lessons/${lessonId}/discussions`, { token }),
 
-  create: (lessonId: string, content: string, token: string) =>
+  create: (
+    lessonId: string,
+    payload: { content: string; mentionUserIds?: string[] },
+    token: string,
+  ) =>
     api<DiscussionThread>(`/lessons/${lessonId}/discussions`, {
       method: 'POST',
-      body: { content },
+      body: payload,
       token,
     }),
 
-  reply: (discussionId: string, content: string, token: string) =>
+  reply: (
+    discussionId: string,
+    payload: { content: string; mentionUserIds?: string[] },
+    token: string,
+  ) =>
     api<DiscussionReplyRow>(`/discussions/${discussionId}/replies`, {
       method: 'POST',
-      body: { content },
+      body: payload,
       token,
     }),
 
@@ -213,4 +245,9 @@ export const discussionsApi = {
 
   deleteReply: (id: string, token: string) =>
     api<{ message: string }>(`/discussion-replies/${id}`, { method: 'DELETE', token }),
+
+  mentionable: (lessonId: string, q: string, token: string) => {
+    const qs = q ? `?q=${encodeURIComponent(q)}` : '';
+    return api<MentionSuggestion[]>(`/lessons/${lessonId}/mentionable${qs}`, { token });
+  },
 };

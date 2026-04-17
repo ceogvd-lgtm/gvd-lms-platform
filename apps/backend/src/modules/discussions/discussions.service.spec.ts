@@ -125,4 +125,41 @@ describe('DiscussionsService', () => {
       service.softDeleteThread({ id: 'u1', role: 'STUDENT' as never }, 'D1'),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  // Phase 14 gap #2 — realtime Q&A. The client subscribes to
+  // /notifications and wants to filter DISCUSSION_REPLY events by
+  // lessonId so it only refetches its own thread list. Backend must
+  // include lessonId in the notification payload.
+  it('createReply: notification data includes lessonId for client-side filter', async () => {
+    prisma.client.discussion.findUnique.mockResolvedValue({
+      id: 'D1',
+      isDeleted: false,
+      // Note: service reads thread.author.id (from Prisma `include: {author}`)
+      // not thread.authorId, so the shape must match the query.
+      author: { id: 'thread-author' },
+      replies: [],
+      lesson: { id: 'L1', title: 'Bài 1' },
+    });
+    prisma.client.discussionReply.create.mockResolvedValue({
+      id: 'R1',
+      discussionId: 'D1',
+      content: 'answer',
+      createdAt: new Date(),
+      isDeleted: false,
+      author: { id: 'instructor-1', name: 'Giảng viên', avatar: null, role: 'INSTRUCTOR' },
+    });
+
+    await service.createReply({ id: 'instructor-1', role: 'INSTRUCTOR' as never }, 'D1', {
+      content: 'answer',
+    });
+
+    await new Promise((r) => setImmediate(r));
+    expect(notifications.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'thread-author',
+        type: 'DISCUSSION_REPLY',
+        data: expect.objectContaining({ discussionId: 'D1', lessonId: 'L1' }),
+      }),
+    );
+  });
 });

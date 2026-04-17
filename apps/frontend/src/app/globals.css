@@ -76,4 +76,29 @@
     );
     background-size: 1000px 100%;
   }
+
+  /* Phase 14 gap #4 — "+XP earned" toast animation.
+     The toast itself is rendered by sonner (which already has its own
+     slide-in transition); the trophy icon inside it does a single
+     pulse/scale-up on mount so the user's eye snaps to the reward. */
+  @keyframes xp-trophy-pulse {
+    0% {
+      transform: scale(0.6) rotate(-12deg);
+      opacity: 0;
+    }
+    55% {
+      transform: scale(1.25) rotate(6deg);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(1) rotate(0);
+      opacity: 1;
+    }
+  }
+  .xp-trophy {
+    animation: xp-trophy-pulse 650ms cubic-bezier(0.22, 1.25, 0.6, 1) both;
+  }
+  .xp-toast {
+    cursor: pointer;
+  }
 }
