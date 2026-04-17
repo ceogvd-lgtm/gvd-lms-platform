@@ -31,33 +31,45 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
 
   const items: SidebarItem[] = useMemo(() => {
     const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
-    // `/courses`, `/lessons`, `/progress`, `/settings` are Phase-14 scope
-    // (Student Dashboard & Learning Experience). Mark them disabled with
-    // a "Sắp có" tag rather than leaving them as dead links that 404.
+    // Phase 14 wires up the student routes. "Tổng quan" points at the
+    // new /student/dashboard for STUDENT + routes back to the shared
+    // /dashboard demo for other roles so admin/instructor visuals stay
+    // unchanged. "Lộ trình" and "Tiến độ" are student-only — they
+    // degrade to "Sắp có" for non-students so the same sidebar works
+    // everywhere. Cài đặt stays as "Sắp có" (Phase 15+).
+    const isStudent = role === 'STUDENT';
     const base: SidebarItem[] = [
       {
         label: 'Tổng quan',
-        href: '/dashboard',
+        href: isStudent ? '/student/dashboard' : '/dashboard',
         icon: Home,
-        active: isActive('/dashboard'),
+        active: isStudent ? isActive('/student/dashboard') : isActive('/dashboard'),
       },
       {
         label: 'Khoá học',
-        icon: BookOpen,
-        disabled: true,
-        disabledReason: 'Sắp có',
+        // STUDENT: show enrolled courses via dashboard card "Khoá học" block.
+        // Others: Sắp có (courses catalog page for public browsing — Phase 15+).
+        ...(isStudent
+          ? {
+              href: '/student/my-learning',
+              icon: BookOpen,
+              active: isActive('/student/my-learning'),
+            }
+          : { icon: BookOpen, disabled: true, disabledReason: 'Sắp có' }),
       },
       {
         label: 'Bài giảng',
+        // Per-lesson deeplinks require an id. Leave as "Sắp có" everywhere —
+        // the "Khoá học" entry above is the way into the lesson viewer.
         icon: GraduationCap,
         disabled: true,
         disabledReason: 'Sắp có',
       },
       {
         label: 'Tiến độ',
-        icon: BarChart3,
-        disabled: true,
-        disabledReason: 'Sắp có',
+        ...(isStudent
+          ? { href: '/student/progress', icon: BarChart3, active: isActive('/student/progress') }
+          : { icon: BarChart3, disabled: true, disabledReason: 'Sắp có' }),
       },
     ];
 
