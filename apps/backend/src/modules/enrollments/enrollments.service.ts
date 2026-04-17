@@ -81,4 +81,127 @@ export class EnrollmentsService {
     await this.prisma.client.courseEnrollment.delete({ where: { id } });
     return { message: 'Đã huỷ ghi danh' };
   }
+
+  // =====================================================
+  // LIST MY ENROLLMENTS — consumed by GET /enrollments/me
+  //
+  // Builds the student-dashboard payload in 4 queries regardless of how
+  // many courses the student is enrolled in (enrollments → chapters →
+  // lessons → progress), then aggregates per-course in JS so we can emit
+  // { course, progress%, nextLessonId } for each enrollment without N+1.
+  // =====================================================
+  async listMine(studentId: string): Promise<MyEnrollment[]> {
+    const enrollments = await this.prisma.client.courseEnrollment.findMany({
+      where: { studentId },
+      orderBy: { enrolledAt: 'desc' },
+      include: {
+        course: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            thumbnailUrl: true,
+            status: true,
+            isDeleted: true,
+          },
+        },
+      },
+    });
+
+    // Drop enrollments whose course was soft-deleted — they're dangling.
+    const live = enrollments.filter((e) => !e.course.isDeleted);
+    if (live.length === 0) return [];
+
+    const courseIds = live.map((e) => e.courseId);
+
+    const chapters = await this.prisma.client.chapter.findMany({
+      where: { courseId: { in: courseIds } },
+      orderBy: [{ courseId: 'asc' }, { order: 'asc' }],
+      select: { id: true, courseId: true, order: true },
+    });
+    const chapterIds = chapters.map((c) => c.id);
+    const chapterIdToCourseId = new Map(chapters.map((c) => [c.id, c.courseId]));
+
+    const lessons = await this.prisma.client.lesson.findMany({
+      where: { chapterId: { in: chapterIds }, isDeleted: false },
+      orderBy: [{ chapterId: 'asc' }, { order: 'asc' }],
+      select: { id: true, chapterId: true, title: true, order: true },
+    });
+
+    const lessonIds = lessons.map((l) => l.id);
+    const completedRows =
+      lessonIds.length === 0
+        ? []
+        : await this.prisma.client.lessonProgress.findMany({
+            where: {
+              studentId,
+              lessonId: { in: lessonIds },
+              status: 'COMPLETED',
+            },
+            select: { lessonId: true },
+          });
+    const completedLessonIds = new Set(completedRows.map((p) => p.lessonId));
+
+    // Group lessons by courseId for fast aggregation.
+    const lessonsPerCourse = new Map<string, { id: string; title: string }[]>();
+    for (const lesson of lessons) {
+      const courseId = chapterIdToCourseId.get(lesson.chapterId);
+      if (!courseId) continue;
+      const bucket = lessonsPerCourse.get(courseId) ?? [];
+      bucket.push({ id: lesson.id, title: lesson.title });
+      lessonsPerCourse.set(courseId, bucket);
+    }
+
+    return live.map((e) => {
+      const lessonsInCourse = lessonsPerCourse.get(e.courseId) ?? [];
+      const total = lessonsInCourse.length;
+      const completed = lessonsInCourse.filter((l) => completedLessonIds.has(l.id)).length;
+      const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+      // First non-completed lesson in reading order — feed the
+      // "Tiếp tục học" button. Falls back to the very first lesson so
+      // the button still works on a brand-new enrollment.
+      const nextLesson =
+        lessonsInCourse.find((l) => !completedLessonIds.has(l.id)) ?? lessonsInCourse[0] ?? null;
+
+      return {
+        enrollmentId: e.id,
+        enrolledAt: e.enrolledAt,
+        completedAt: e.completedAt,
+        course: {
+          id: e.course.id,
+          title: e.course.title,
+          description: e.course.description,
+          thumbnailUrl: e.course.thumbnailUrl,
+          status: e.course.status,
+        },
+        totalLessons: total,
+        completedLessons: completed,
+        progress,
+        nextLessonId: nextLesson?.id ?? null,
+        nextLessonTitle: nextLesson?.title ?? null,
+      };
+    });
+  }
+}
+
+// =====================================================
+// Response shape for listMine — exported so the frontend can type the
+// fetch without importing Prisma runtime types.
+// =====================================================
+export interface MyEnrollment {
+  enrollmentId: string;
+  enrolledAt: Date;
+  completedAt: Date | null;
+  course: {
+    id: string;
+    title: string;
+    description: string | null;
+    thumbnailUrl: string | null;
+    status: string;
+  };
+  totalLessons: number;
+  completedLessons: number;
+  progress: number;
+  nextLessonId: string | null;
+  nextLessonTitle: string | null;
 }
