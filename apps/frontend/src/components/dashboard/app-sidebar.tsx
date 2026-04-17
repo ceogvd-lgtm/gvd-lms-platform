@@ -26,10 +26,14 @@ interface AppSidebarProps {
 export function AppSidebar({ collapsed = false }: AppSidebarProps) {
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
+  const clear = useAuthStore((s) => s.clear);
   const role = user?.role;
 
   const items: SidebarItem[] = useMemo(() => {
     const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+    // `/courses`, `/lessons`, `/progress`, `/settings` are Phase-14 scope
+    // (Student Dashboard & Learning Experience). Mark them disabled with
+    // a "Sắp có" tag rather than leaving them as dead links that 404.
     const base: SidebarItem[] = [
       {
         label: 'Tổng quan',
@@ -39,21 +43,21 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
       },
       {
         label: 'Khoá học',
-        href: '/courses',
         icon: BookOpen,
-        active: isActive('/courses'),
+        disabled: true,
+        disabledReason: 'Sắp có',
       },
       {
         label: 'Bài giảng',
-        href: '/lessons',
         icon: GraduationCap,
-        active: isActive('/lessons'),
+        disabled: true,
+        disabledReason: 'Sắp có',
       },
       {
         label: 'Tiến độ',
-        href: '/progress',
         icon: BarChart3,
-        active: isActive('/progress'),
+        disabled: true,
+        disabledReason: 'Sắp có',
       },
     ];
 
@@ -87,9 +91,9 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
 
     base.push({
       label: 'Cài đặt',
-      href: '/settings',
       icon: Settings,
-      active: isActive('/settings'),
+      disabled: true,
+      disabledReason: 'Sắp có',
     });
 
     return base;
@@ -114,6 +118,12 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
       footer={
         <button
           type="button"
+          onClick={() => {
+            clear();
+            // Hard redirect rather than router.push so any cached
+            // authenticated page state is dropped at the same time.
+            window.location.href = '/login';
+          }}
           className="flex w-full items-center gap-3 rounded-button px-3 py-2 text-sm text-muted hover:bg-surface-2 hover:text-error transition-colors"
           title={collapsed ? 'Đăng xuất' : undefined}
         >

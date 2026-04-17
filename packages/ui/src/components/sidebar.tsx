@@ -22,6 +22,15 @@ export interface SidebarItem {
   badge?: string | number;
   active?: boolean;
   children?: SidebarItem[];
+  /**
+   * Marks the item as not-yet-implemented. Rendered as a non-clickable
+   * div with reduced opacity + cursor-not-allowed + a muted tooltip.
+   * Pair with `disabledReason` to show a "Sắp có" tag alongside the
+   * label so the affordance is still discoverable.
+   */
+  disabled?: boolean;
+  /** Small muted pill shown when `disabled` is true (e.g. "Sắp có"). */
+  disabledReason?: string;
 }
 
 export interface SidebarProps extends React.HTMLAttributes<HTMLElement> {
@@ -92,6 +101,7 @@ function SidebarItemNode({
   const [open, setOpen] = React.useState(item.children?.some((c) => c.active) ?? false);
 
   const Icon = item.icon;
+  const isDisabled = item.disabled === true;
   const baseClasses = cn(
     'group flex items-center gap-3 rounded-button text-sm font-medium',
     'transition-colors duration-150',
@@ -101,6 +111,7 @@ function SidebarItemNode({
       : 'text-muted hover:bg-surface-2 hover:text-foreground',
     collapsed ? 'h-10 w-10 justify-center mx-auto' : 'h-10 px-3',
     depth > 0 && !collapsed && 'pl-10',
+    isDisabled && 'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-muted',
   );
 
   const inner = (
@@ -109,7 +120,12 @@ function SidebarItemNode({
       {!collapsed && (
         <>
           <span className="flex-1 truncate">{item.label}</span>
-          {item.badge !== undefined && (
+          {isDisabled && item.disabledReason && (
+            <span className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+              {item.disabledReason}
+            </span>
+          )}
+          {!isDisabled && item.badge !== undefined && (
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
               {item.badge}
             </span>
@@ -125,9 +141,21 @@ function SidebarItemNode({
     </>
   );
 
+  const disabledTitle = isDisabled
+    ? `${item.label}${item.disabledReason ? ` — ${item.disabledReason}` : ''}`
+    : undefined;
+
   return (
     <li>
-      {hasChildren ? (
+      {isDisabled ? (
+        <div
+          className={baseClasses}
+          aria-disabled="true"
+          title={disabledTitle ?? (collapsed ? item.label : undefined)}
+        >
+          {inner}
+        </div>
+      ) : hasChildren ? (
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}

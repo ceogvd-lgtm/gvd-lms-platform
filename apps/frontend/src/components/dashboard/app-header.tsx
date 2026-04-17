@@ -114,7 +114,16 @@ export function AppHeader({ onToggleSidebar }: AppHeaderProps) {
               </DropdownMenuItem>
             </span>
             <DropdownMenuSeparator />
-            <DropdownMenuItem destructive onSelect={() => clear()}>
+            <DropdownMenuItem
+              destructive
+              onSelect={() => {
+                clear();
+                // Hard redirect drops any cached auth-protected page state
+                // along with the Zustand reset — layouts without an auth
+                // guard (e.g. /dashboard) would otherwise stay visible.
+                window.location.href = '/login';
+              }}
+            >
               <LogOut className="h-4 w-4" />
               Đăng xuất
             </DropdownMenuItem>

@@ -1,11 +1,12 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 import { AppHeader } from '@/components/dashboard/app-header';
 import { AppSidebar } from '@/components/dashboard/app-sidebar';
+import { useAuthStore, useHasHydrated } from '@/lib/auth-store';
 
 /**
  * Dashboard shell — fixed sidebar on desktop, drawer on mobile.
@@ -16,10 +17,38 @@ import { AppSidebar } from '@/components/dashboard/app-sidebar';
  * - Content: padding responsive (16px mobile, 24px tablet, 32px desktop),
  *   max-width 1400px auto-centered
  * - Page transitions: fade + slide-up 200ms via framer-motion AnimatePresence
+ *
+ * Auth: bounces to /login once hydrated + no access token. Mirrors the
+ * guard in (admin)/layout.tsx + (instructor)/layout.tsx so that clicking
+ * "Đăng xuất" (which clears the Zustand store) actually navigates away
+ * from the dashboard instead of leaving a stale UI behind.
  */
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const hasHydrated = useHasHydrated();
+
+  useEffect(() => {
+    if (!hasHydrated) return;
+    if (!accessToken) {
+      router.replace('/login');
+    }
+  }, [hasHydrated, accessToken, router]);
+
+  if (!hasHydrated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p className="text-sm text-muted">Đang tải…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!accessToken) return null; // useEffect will redirect
 
   return (
     <div className="flex min-h-screen bg-background">
