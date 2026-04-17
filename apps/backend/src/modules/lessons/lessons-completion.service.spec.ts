@@ -5,6 +5,7 @@ import { Test } from '@nestjs/testing';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { XpService } from '../students/xp.service';
 
 import { LessonsService } from './lessons.service';
 
@@ -27,20 +28,24 @@ describe('LessonsService — completeForStudent', () => {
   let service: LessonsService;
   let prisma: {
     client: {
-      lesson: { findUnique: jest.Mock };
-      lessonProgress: { upsert: jest.Mock; findUnique: jest.Mock };
+      lesson: { findUnique: jest.Mock; findMany: jest.Mock; count: jest.Mock };
+      lessonProgress: { upsert: jest.Mock; findUnique: jest.Mock; count: jest.Mock };
       videoProgress: { findUnique: jest.Mock };
       quizAttempt: { aggregate: jest.Mock; findMany: jest.Mock };
+      chapter: { findMany: jest.Mock };
+      courseEnrollment: { findUnique: jest.Mock; update: jest.Mock };
     };
   };
 
   beforeEach(async () => {
     prisma = {
       client: {
-        lesson: { findUnique: jest.fn() },
-        lessonProgress: { upsert: jest.fn(), findUnique: jest.fn() },
+        lesson: { findUnique: jest.fn(), findMany: jest.fn(), count: jest.fn() },
+        lessonProgress: { upsert: jest.fn(), findUnique: jest.fn(), count: jest.fn() },
         videoProgress: { findUnique: jest.fn() },
         quizAttempt: { aggregate: jest.fn(), findMany: jest.fn() },
+        chapter: { findMany: jest.fn().mockResolvedValue([]) },
+        courseEnrollment: { findUnique: jest.fn(), update: jest.fn() },
       },
     };
     const mod: TestingModule = await Test.createTestingModule({
@@ -48,6 +53,7 @@ describe('LessonsService — completeForStudent', () => {
         LessonsService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { log: jest.fn() } },
+        { provide: XpService, useValue: { award: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
     service = mod.get(LessonsService);

@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { DiscussionsTab } from '@/components/student/discussions-tab';
 import { LessonOutline } from '@/components/student/lesson-outline';
 import { NotesTab } from '@/components/student/notes-tab';
 import { PdfViewer } from '@/components/student/pdf-viewer';
@@ -238,6 +239,7 @@ export default function StudentLessonPage({ params }: PageProps) {
               </TabsTrigger>
               <TabsTrigger value="practice">Thực hành ảo</TabsTrigger>
               <TabsTrigger value="notes">Ghi chú</TabsTrigger>
+              <TabsTrigger value="discussions">Hỏi đáp</TabsTrigger>
             </TabsList>
 
             {/* ----- Lý thuyết ----- */}
@@ -345,6 +347,11 @@ export default function StudentLessonPage({ params }: PageProps) {
               ) : (
                 <div className="py-8 text-center text-sm text-muted">Đăng nhập để ghi chú.</div>
               )}
+            </TabsContent>
+
+            {/* ----- Hỏi đáp (Phase 14) ----- */}
+            <TabsContent value="discussions">
+              <DiscussionsTab lessonId={lessonId} />
             </TabsContent>
           </Tabs>
         </div>

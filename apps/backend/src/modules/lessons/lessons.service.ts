@@ -8,6 +8,7 @@ import {
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { XpReason, XpService } from '../students/xp.service';
 
 import { CreateLessonDto } from './dto/create-lesson.dto';
 import { UpdateLessonDto } from './dto/update-lesson.dto';
@@ -26,6 +27,7 @@ export class LessonsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly xp: XpService,
   ) {}
 
   private async findLessonWithCourse(id: string) {
@@ -229,7 +231,15 @@ export class LessonsService {
       }
     }
 
-    return this.prisma.client.lessonProgress.upsert({
+    // First-time completion detector — we check BEFORE the upsert so the
+    // XP award fires only on the transition NOT_STARTED/IN_PROGRESS → COMPLETED.
+    const existing = await this.prisma.client.lessonProgress.findUnique({
+      where: { lessonId_studentId: { lessonId, studentId } },
+      select: { status: true },
+    });
+    const isFirstComplete = !existing || existing.status !== ProgressStatus.COMPLETED;
+
+    const progress = await this.prisma.client.lessonProgress.upsert({
       where: { lessonId_studentId: { lessonId, studentId } },
       update: {
         status: ProgressStatus.COMPLETED,
@@ -244,6 +254,70 @@ export class LessonsService {
         lastViewAt: now,
       },
     });
+
+    // Phase 14 — XP cascade.
+    // 1. +10 XP for first-ever completion of this lesson.
+    // 2. If this completion takes the WHOLE course to 100%, mark the
+    //    enrollment.completedAt + award +100 XP once.
+    if (isFirstComplete) {
+      await this.xp.award(studentId, XpReason.LESSON_COMPLETED).catch(() => undefined);
+      await this.checkAndAwardCourseCompletion(studentId, lessonId).catch(() => undefined);
+    }
+
+    return progress;
+  }
+
+  /**
+   * When a student completes a lesson, see if the whole course is now
+   * COMPLETED too. If yes, stamp CourseEnrollment.completedAt + award
+   * the +100 XP bonus. No-op if the enrollment is already completed or
+   * the student isn't enrolled in the owning course.
+   */
+  private async checkAndAwardCourseCompletion(studentId: string, lessonId: string): Promise<void> {
+    const lesson = await this.prisma.client.lesson.findUnique({
+      where: { id: lessonId },
+      select: { chapter: { select: { courseId: true } } },
+    });
+    if (!lesson) return;
+    const courseId = lesson.chapter.courseId;
+
+    const enrollment = await this.prisma.client.courseEnrollment.findUnique({
+      where: { courseId_studentId: { courseId, studentId } },
+    });
+    if (!enrollment || enrollment.completedAt) return;
+
+    // Count total lessons in course + student's completed count.
+    const chapters = await this.prisma.client.chapter.findMany({
+      where: { courseId },
+      select: { id: true },
+    });
+    const chapterIds = chapters.map((c) => c.id);
+    const [total, completed] = await Promise.all([
+      this.prisma.client.lesson.count({
+        where: { chapterId: { in: chapterIds }, isDeleted: false },
+      }),
+      this.prisma.client.lessonProgress.count({
+        where: {
+          studentId,
+          status: ProgressStatus.COMPLETED,
+          lessonId: {
+            in: (
+              await this.prisma.client.lesson.findMany({
+                where: { chapterId: { in: chapterIds }, isDeleted: false },
+                select: { id: true },
+              })
+            ).map((l) => l.id),
+          },
+        },
+      }),
+    ]);
+    if (total === 0 || completed < total) return;
+
+    await this.prisma.client.courseEnrollment.update({
+      where: { id: enrollment.id },
+      data: { completedAt: new Date() },
+    });
+    await this.xp.award(studentId, XpReason.COURSE_COMPLETED).catch(() => undefined);
   }
 
   /**

@@ -16,6 +16,9 @@ export const NOTIFICATION_TYPES = [
   'QUIZ_GRADED',
   'INSTRUCTOR_FEEDBACK',
   'SYSTEM_ALERT',
+  // Phase 14 — Q&A threads
+  'DISCUSSION_MENTION',
+  'DISCUSSION_REPLY',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

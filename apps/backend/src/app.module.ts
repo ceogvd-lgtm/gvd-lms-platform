@@ -22,22 +22,27 @@ import { CertificatesModule } from './modules/certificates/certificates.module';
 import { ChaptersModule } from './modules/chapters/chapters.module';
 import { CoursesModule } from './modules/courses/courses.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
+import { DiscussionsModule } from './modules/discussions/discussions.module';
 import { EnrollmentsModule } from './modules/enrollments/enrollments.module';
 import { InstructorModule } from './modules/instructor/instructor.module';
+import { LessonNotesModule } from './modules/lesson-notes/lesson-notes.module';
 import { LessonsModule } from './modules/lessons/lessons.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PracticeModule } from './modules/practice/practice.module';
 import { PracticeContentsModule } from './modules/practice-contents/practice-contents.module';
 import { QuestionsModule } from './modules/questions/questions.module';
+import { QuizAttemptsModule } from './modules/quiz-attempts/quiz-attempts.module';
 import { QuizzesModule } from './modules/quizzes/quizzes.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ScormModule } from './modules/scorm/scorm.module';
 import { StorageModule } from './modules/storage/storage.module';
+import { StudentsModule } from './modules/students/students.module';
 import { SubjectsModule } from './modules/subjects/subjects.module';
 import { SystemSettingsModule } from './modules/system-settings/system-settings.module';
 import { TheoryContentsModule } from './modules/theory-contents/theory-contents.module';
 import { VideoProgressModule } from './modules/video-progress/video-progress.module';
 import { XapiModule } from './modules/xapi/xapi.module';
+// Phase 14
 
 // The shared .env file lives at the monorepo root. At runtime the compiled
 // module sits in apps/backend/dist/, so we walk up three levels to reach it
@@ -99,6 +104,11 @@ const monorepoRoot = join(__dirname, '..', '..', '..');
     VideoProgressModule,
     // Phase 13
     PracticeModule,
+    // Phase 14 — Student Dashboard & Learning Experience
+    StudentsModule,
+    QuizAttemptsModule,
+    LessonNotesModule,
+    DiscussionsModule,
   ],
   controllers: [AppController],
   providers: [

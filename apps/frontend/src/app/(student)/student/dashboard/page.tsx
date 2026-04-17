@@ -2,59 +2,44 @@
 
 import { Badge, Button, Card, CardContent } from '@lms/ui';
 import { useQuery } from '@tanstack/react-query';
-import { BookOpen, ChevronDown, ChevronRight, GraduationCap, Play } from 'lucide-react';
+import { BookOpen, Flame, GraduationCap, Play, Sparkles, TrendingUp, Trophy } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
 
 import { useAuthStore } from '@/lib/auth-store';
-import { chaptersApi, enrollmentsApi, type MyEnrollment } from '@/lib/curriculum';
+import { studentsApi, type DashboardPayload } from '@/lib/students';
 
 /**
- * Student dashboard — "Khoá học của tôi".
+ * Student dashboard — Phase 14.
  *
- * Lightweight Phase-13.5 stop-gap until Phase 14 ships the full student
- * learning experience. Lists every course the signed-in user has
- * enrolled in plus per-course progress (derived server-side from
- * LessonProgress rows). Each card is expandable to reveal the chapter
- * tree so the student can jump straight to a specific lesson.
+ * Full 6-row layout replacing the Phase-13.5 stub:
+ *   1. Greeting + motivational quote
+ *   2. 3 stats cards: circular progress · streak · XP level
+ *   3. Enrolled courses grid
+ *   4. "Next lesson" CTA banner
+ *   5. Recent quiz scores (sparkline)
+ *   6. Recent notifications (stub — Phase 7 socket feeds drive it)
  *
- * States:
- *   - Loading   → skeleton cards
- *   - Error     → inline error with retry button
- *   - Empty     → friendly "chưa được enroll" hint
- *   - Happy     → cards with thumbnail + progress + Tiếp tục học
- *
- * All visuals live in Tailwind tokens so Light + Dark mode both work
- * without per-page overrides.
+ * All data comes from GET /api/v1/students/dashboard (single round-trip
+ * so the first paint is fast). Individual components can still hit their
+ * own endpoints for richer states (see /student/progress for charts).
  */
 export default function StudentDashboardPage() {
   const accessToken = useAuthStore((s) => s.accessToken);
-  const user = useAuthStore((s) => s.user);
 
   const query = useQuery({
-    queryKey: ['my-enrollments', user?.id],
-    queryFn: () => enrollmentsApi.me(accessToken!),
+    queryKey: ['student-dashboard'],
+    queryFn: () => studentsApi.dashboard(accessToken!),
     enabled: !!accessToken,
   });
 
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-8 sm:px-6 lg:px-8">
-      <header className="mb-6 space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Khoá học của tôi</h1>
-        <p className="text-sm text-muted">
-          Tiếp tục các khoá học bạn đã ghi danh. Nhấn vào thẻ để xem danh sách bài giảng.
-        </p>
-      </header>
-
       {query.isLoading && <LoadingGrid />}
 
       {query.isError && (
         <Card className="border-error/30 bg-error/5">
           <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-            <p className="text-sm font-semibold text-error">Không tải được khoá học</p>
-            <p className="max-w-md text-xs text-muted">
-              {query.error instanceof Error ? query.error.message : 'Lỗi không xác định'}
-            </p>
+            <p className="text-sm font-semibold text-error">Không tải được dashboard</p>
             <Button variant="outline" size="sm" onClick={() => query.refetch()}>
               Thử lại
             </Button>
@@ -62,56 +47,212 @@ export default function StudentDashboardPage() {
         </Card>
       )}
 
-      {query.data && query.data.length === 0 && (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <GraduationCap className="h-7 w-7" />
-            </div>
-            <p className="text-base font-semibold text-foreground">
-              Bạn chưa được enroll khoá học nào
-            </p>
-            <p className="max-w-md text-sm text-muted">
-              Liên hệ Quản trị viên để được thêm vào một khoá học, hoặc chờ khoá học mới được mở
-              đăng ký.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {query.data && query.data.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {query.data.map((e) => (
-            <EnrollmentCard key={e.enrollmentId} enrollment={e} accessToken={accessToken!} />
-          ))}
-        </div>
-      )}
+      {query.data && <DashboardBody data={query.data} />}
     </div>
   );
 }
 
 // =====================================================
-// Card — collapsed by default, expands to show chapter/lesson tree.
+// Main body — 6 rows per Phase 14 spec
 // =====================================================
-function EnrollmentCard({
-  enrollment,
-  accessToken,
-}: {
-  enrollment: MyEnrollment;
-  accessToken: string;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const { course, progress, totalLessons, completedLessons, nextLessonId } = enrollment;
-
-  const tree = useQuery({
-    queryKey: ['student-outline', course.id],
-    queryFn: () => chaptersApi.listByCourse(course.id, accessToken),
-    enabled: expanded,
-  });
+function DashboardBody({ data }: { data: DashboardPayload }) {
+  const quote = pickQuote(data.user.id);
 
   return (
+    <div className="space-y-6">
+      {/* Row 1 — Greeting */}
+      <header className="space-y-1">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          Xin chào {data.user.name}! 👋
+        </h1>
+        <p className="text-sm text-muted">
+          {new Date().toLocaleDateString('vi-VN', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+          })}{' '}
+          · <span className="italic">{quote}</span>
+        </p>
+      </header>
+
+      {/* Row 2 — Stats trio */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <OverallProgressCard
+          percent={data.overallProgress.percent}
+          completed={data.overallProgress.completedLessons}
+          total={data.overallProgress.totalLessons}
+        />
+        <StreakCard current={data.streak.current} longest={data.streak.longest} />
+        <XpCard totalXP={data.xp.totalXP} level={data.xp.level} />
+      </div>
+
+      {/* Row 3 — Enrolled courses */}
+      <section className="space-y-3">
+        <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
+          <BookOpen className="h-5 w-5 text-primary" />
+          Khoá học đang học
+        </h2>
+        {data.enrolledCourses.length === 0 ? (
+          <Card className="border-dashed">
+            <CardContent className="py-12 text-center text-sm text-muted">
+              Bạn chưa được enroll khoá học nào.
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {data.enrolledCourses.map((c) => (
+              <EnrolledCourseCard key={c.id} course={c} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Row 4 — Next-lesson CTA */}
+      {data.nextLesson && (
+        <Card className="overflow-hidden border-primary/30 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent">
+          <CardContent className="flex flex-wrap items-center justify-between gap-4 py-6">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+                Bài học tiếp theo
+              </p>
+              <h3 className="mt-1 truncate text-lg font-bold text-foreground">
+                {data.nextLesson.title}
+              </h3>
+              <p className="text-sm text-muted">{data.nextLesson.courseTitle}</p>
+            </div>
+            <Button asChild>
+              <Link href={`/student/lessons/${data.nextLesson.id}`}>
+                <Play className="h-4 w-4" />
+                Học ngay
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Row 5 — Recent quiz scores sparkline */}
+      <section className="space-y-3">
+        <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
+          <TrendingUp className="h-5 w-5 text-primary" />
+          Điểm gần đây
+        </h2>
+        <RecentScoresCard scores={data.recentScores} />
+      </section>
+    </div>
+  );
+}
+
+// =====================================================
+// Stats cards — Row 2
+// =====================================================
+
+function OverallProgressCard({
+  percent,
+  completed,
+  total,
+}: {
+  percent: number;
+  completed: number;
+  total: number;
+}) {
+  const radius = 42;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (percent / 100) * circumference;
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-4 py-4">
+        <div className="relative h-24 w-24 shrink-0">
+          <svg className="h-24 w-24 -rotate-90" viewBox="0 0 100 100">
+            <circle
+              cx="50"
+              cy="50"
+              r={radius}
+              fill="none"
+              className="stroke-surface-2"
+              strokeWidth="8"
+            />
+            <circle
+              cx="50"
+              cy="50"
+              r={radius}
+              fill="none"
+              className="stroke-primary transition-[stroke-dashoffset] duration-700 ease-out"
+              strokeWidth="8"
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={offset}
+            />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-xl font-bold text-foreground">{percent}%</span>
+          </div>
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs uppercase tracking-wider text-muted">Tiến độ tổng</p>
+          <p className="mt-1 text-sm font-semibold text-foreground">
+            {completed}/{total} bài
+          </p>
+          <p className="mt-0.5 text-xs text-muted">Tính trên mọi khoá đã enroll</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function StreakCard({ current, longest }: { current: number; longest: number }) {
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-4 py-4">
+        <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-orange-500">
+          <Flame className="h-10 w-10" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs uppercase tracking-wider text-muted">Streak</p>
+          <p className="mt-1 text-2xl font-bold text-foreground">{current} ngày</p>
+          <p className="mt-0.5 text-xs text-muted">Dài nhất: {longest} ngày</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function XpCard({ totalXP, level }: { totalXP: number; level: number }) {
+  const xpInLevel = totalXP % 100;
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-4 py-4">
+        <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <Trophy className="h-10 w-10" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="text-xs uppercase tracking-wider text-muted">XP</p>
+            <Badge tone="info">Lvl {level}</Badge>
+          </div>
+          <p className="mt-1 text-2xl font-bold text-foreground">
+            {totalXP.toLocaleString('vi-VN')}
+          </p>
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-2">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-500"
+              style={{ width: `${xpInLevel}%` }}
+            />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// =====================================================
+// Row 3 — Enrolled course card
+// =====================================================
+
+function EnrolledCourseCard({ course }: { course: DashboardPayload['enrolledCourses'][number] }) {
+  return (
     <Card className="flex flex-col overflow-hidden">
-      <div className="aspect-video w-full overflow-hidden bg-surface-2">
+      <div className="aspect-video w-full bg-surface-2">
         {course.thumbnailUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -120,126 +261,142 @@ function EnrollmentCard({
             className="h-full w-full object-cover"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-xs text-muted">
-            <BookOpen className="h-8 w-8 opacity-40" />
+          <div className="flex h-full w-full items-center justify-center text-muted">
+            <GraduationCap className="h-8 w-8 opacity-40" />
           </div>
         )}
       </div>
-
       <CardContent className="flex flex-1 flex-col gap-3 p-4">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="line-clamp-2 text-base font-semibold text-foreground">{course.title}</h3>
-          <Badge tone={progress === 100 ? 'success' : 'info'}>{progress}%</Badge>
-        </div>
-
-        {course.description && (
-          <p className="line-clamp-2 text-sm text-muted">{course.description}</p>
-        )}
-
-        {/* Progress bar */}
+        <h3 className="line-clamp-2 text-sm font-semibold text-foreground">{course.title}</h3>
         <div>
           <div className="flex items-center justify-between text-xs text-muted">
-            <span>
-              {completedLessons}/{totalLessons} bài đã xong
-            </span>
-            {progress === 100 && <span className="font-semibold text-success">Hoàn thành</span>}
+            <span>{course.progressPercent}% đã xong</span>
           </div>
-          <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-surface-2">
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-2">
             <div
               className={
-                'h-full rounded-full transition-all duration-300 ' +
-                (progress === 100 ? 'bg-success' : 'bg-primary')
+                'h-full rounded-full transition-all duration-500 ' +
+                (course.progressPercent === 100 ? 'bg-success' : 'bg-primary')
               }
-              style={{ width: `${Math.max(2, progress)}%` }}
+              style={{ width: `${Math.max(2, course.progressPercent)}%` }}
             />
           </div>
         </div>
-
-        {/* Actions */}
-        <div className="mt-auto flex items-center gap-2 pt-2">
-          {nextLessonId ? (
-            <Button asChild size="sm" className="flex-1">
-              <Link href={`/student/lessons/${nextLessonId}`}>
+        <div className="mt-auto">
+          {course.nextLessonId ? (
+            <Button asChild size="sm" className="w-full">
+              <Link href={`/student/lessons/${course.nextLessonId}`}>
                 <Play className="h-3.5 w-3.5" />
-                {completedLessons > 0 ? 'Tiếp tục học' : 'Bắt đầu học'}
+                Tiếp tục
               </Link>
             </Button>
           ) : (
-            <Button size="sm" variant="outline" disabled className="flex-1">
-              Khoá chưa có bài học
+            <Button size="sm" variant="outline" disabled className="w-full">
+              Chưa có bài
             </Button>
           )}
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setExpanded((v) => !v)}
-            aria-expanded={expanded}
-          >
-            {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          </Button>
         </div>
-
-        {/* Expanded tree */}
-        {expanded && (
-          <div className="mt-2 border-t border-border pt-3">
-            {tree.isLoading && <p className="text-xs text-muted">Đang tải cây bài học…</p>}
-            {tree.isError && <p className="text-xs text-error">Không tải được danh sách.</p>}
-            {tree.data && tree.data.length === 0 && (
-              <p className="text-xs text-muted">Khoá học chưa có chương nào.</p>
-            )}
-            {tree.data && tree.data.length > 0 && (
-              <ul className="space-y-3">
-                {tree.data.map((chapter) => (
-                  <li key={chapter.id}>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted">
-                      {chapter.title}
-                    </p>
-                    <ul className="mt-1 space-y-0.5">
-                      {(chapter.lessons ?? []).map((lesson) => (
-                        <li key={lesson.id}>
-                          <Link
-                            href={`/student/lessons/${lesson.id}`}
-                            className="flex items-center gap-2 rounded px-2 py-1 text-sm text-foreground hover:bg-surface-2 transition-colors"
-                          >
-                            <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted" />
-                            <span className="flex-1 truncate">{lesson.title}</span>
-                            {lesson.type === 'PRACTICE' && (
-                              <span className="rounded bg-secondary/10 px-1.5 py-0.5 text-[10px] font-semibold text-secondary">
-                                TH
-                              </span>
-                            )}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
       </CardContent>
     </Card>
   );
 }
 
 // =====================================================
-// Loading skeleton — 3 card placeholders.
+// Row 5 — Recent scores sparkline
+// =====================================================
+
+function RecentScoresCard({ scores }: { scores: DashboardPayload['recentScores'] }) {
+  if (scores.length === 0) {
+    return (
+      <Card className="border-dashed">
+        <CardContent className="py-8 text-center text-sm text-muted">
+          Chưa có bài kiểm tra nào.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const points = scores
+    .map((s) => (s.maxScore > 0 ? Math.round((s.score / s.maxScore) * 100) : 0))
+    .reverse(); // oldest → newest so the line flows left to right
+  const max = 100;
+  const step = points.length > 1 ? 300 / (points.length - 1) : 0;
+  const coords = points.map((p, i) => [i * step, 60 - (p / max) * 55] as const);
+  const path = coords.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x},${y}`).join(' ');
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+        <svg
+          viewBox="0 0 300 60"
+          className="h-16 w-full min-w-[200px] flex-1"
+          preserveAspectRatio="none"
+        >
+          <path
+            d={path}
+            fill="none"
+            stroke="currentColor"
+            className="text-primary"
+            strokeWidth="2"
+          />
+          {coords.map(([x, y], i) => (
+            <circle key={i} cx={x} cy={y} r="2.5" className="fill-primary" />
+          ))}
+        </svg>
+        <ul className="flex flex-1 flex-col gap-1 text-xs">
+          {scores.slice(0, 5).map((s, i) => {
+            const p = s.maxScore > 0 ? Math.round((s.score / s.maxScore) * 100) : 0;
+            return (
+              <li key={i} className="flex items-center justify-between gap-3">
+                <span className="min-w-0 flex-1 truncate text-foreground">{s.lessonTitle}</span>
+                <span className={p >= 70 ? 'font-semibold text-success' : 'text-muted'}>{p}%</span>
+              </li>
+            );
+          })}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+// =====================================================
+// Loading skeleton
 // =====================================================
 function LoadingGrid() {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="overflow-hidden rounded-card border border-border bg-surface">
-          <div className="aspect-video w-full animate-pulse bg-surface-2" />
-          <div className="space-y-3 p-4">
-            <div className="h-4 w-3/4 animate-pulse rounded bg-surface-2" />
-            <div className="h-3 w-full animate-pulse rounded bg-surface-2" />
-            <div className="h-2 w-full animate-pulse rounded bg-surface-2" />
-            <div className="mt-4 h-8 w-full animate-pulse rounded bg-surface-2" />
-          </div>
-        </div>
-      ))}
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <div className="h-7 w-1/2 animate-pulse rounded bg-surface-2" />
+        <div className="h-4 w-1/3 animate-pulse rounded bg-surface-2" />
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-28 animate-pulse rounded-card bg-surface-2" />
+        ))}
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-48 animate-pulse rounded-card bg-surface-2" />
+        ))}
+      </div>
     </div>
   );
 }
+
+// =====================================================
+// Motivational quote — deterministic per user so refreshes don't flicker
+// =====================================================
+const QUOTES = [
+  'Học tập là hành trình, không phải đích đến.',
+  'Mỗi bài học hôm nay là một bước tiến của ngày mai.',
+  'Kỷ luật là cầu nối giữa mục tiêu và thành tựu.',
+  'Kiến thức tích luỹ mỗi ngày — dù chỉ 1% cũng đáng giá.',
+  'An toàn là không có tai nạn — không chỉ là luật lệ.',
+  'Người giỏi không biết tất cả, họ chỉ biết cách tìm ra câu trả lời.',
+];
+function pickQuote(seed: string): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  return QUOTES[hash % QUOTES.length]!;
+}
+void Sparkles; // silence unused-import lint while icon stays reserved for row 6

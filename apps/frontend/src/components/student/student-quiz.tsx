@@ -106,20 +106,67 @@ export function StudentQuiz({ lessonId, locked, onPassed }: StudentQuizProps) {
   const submit = useMutation({
     mutationFn: async (): Promise<SubmitResult> => {
       if (!quiz) throw new Error('Quiz chưa tải xong');
-      const payload = {
-        quizId: quiz.id,
-        answers: Object.values(answers),
-      };
-      // Try the optional server-side submission. Phase 12 defines it as
-      // a stub that always responds 501 — we fall back to client-side
-      // grading on any error so the UI still works.
+      // Phase 14 server grading — the answer shape is the raw `answer`
+      // value (index, index[], or trimmed text) per question type. We
+      // translate the editor's local "value" into the wire shape here
+      // so the existing idle/taking UI doesn't need to change.
+      const wireAnswers = quiz.questions.map((qq) => {
+        const a = answers[qq.questionId];
+        const raw = a?.value;
+        const qType = qq.question.type;
+        let answer: unknown = null;
+        if (qType === 'MULTI_CHOICE') {
+          // value stored as string[] of option indices
+          const arr = Array.isArray(raw) ? raw : raw ? [raw] : [];
+          answer = arr.map((s) => Number(s)).filter((n) => Number.isInteger(n));
+        } else if (qType === 'FILL_BLANK') {
+          answer = typeof raw === 'string' ? raw : '';
+        } else {
+          // SINGLE_CHOICE / TRUE_FALSE → single index
+          const s = Array.isArray(raw) ? raw[0] : raw;
+          answer = s !== undefined && s !== '' ? Number(s) : null;
+        }
+        return { questionId: qq.questionId, answer };
+      });
+
       try {
-        return await api<SubmitResult>('/quiz-attempts', {
+        const res = await api<{
+          attemptId: string;
+          score: number;
+          maxScore: number;
+          percent: number;
+          passed: boolean;
+          passScore: number;
+          results: Array<{
+            questionId: string;
+            correct: boolean;
+            awarded: number;
+            maxPoints: number;
+            explanation: string | null;
+          }>;
+        }>('/quiz-attempts', {
           method: 'POST',
-          body: payload,
+          body: { quizId: quiz.id, answers: wireAnswers },
           token: accessToken!,
         });
+        return {
+          id: res.attemptId,
+          score: res.score,
+          maxScore: res.maxScore,
+          passed: res.passed,
+          perQuestion: res.results.map((r) => ({
+            questionId: r.questionId,
+            correct: r.correct,
+            awardedPoints: r.awarded,
+            // Backend intentionally does NOT leak correctAnswer — the
+            // existing UI showed it next to explanation; we hide it now
+            // by passing an empty array.
+            correctAnswer: [],
+            explanation: r.explanation,
+          })),
+        };
       } catch {
+        // Fallback to Phase 12 local grader if server refused.
         return gradeLocally(quiz, answers);
       }
     },
