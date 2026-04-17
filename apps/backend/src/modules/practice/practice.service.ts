@@ -344,25 +344,69 @@ export class PracticeService {
   // =====================================================
   // GET /practice/:lessonId/attempts
   // =====================================================
-  async listAttempts(actor: Actor, lessonId: string): Promise<AttemptRow[]> {
+  /**
+   * GET /practice/:lessonId/my-attempts
+   *
+   * Returns **only** the caller's own attempts, regardless of their role.
+   * Used by the student lesson page — the earlier `listAttempts` widened
+   * to return every student's rows when an admin viewed the page, which
+   * broke the "attempts used vs maxAttempts" counter for admins browsing
+   * as students.
+   */
+  async listMyAttempts(userId: string, lessonId: string): Promise<AttemptRow[]> {
     const pc = await this.loadPracticeContent(lessonId);
 
-    const isInstructor =
+    const rows = await this.prisma.client.practiceAttempt.findMany({
+      where: { practiceContentId: pc.id, studentId: userId },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+
+    return rows.map((r) => ({
+      id: r.id,
+      practiceContentId: r.practiceContentId,
+      studentId: r.studentId,
+      score: r.score,
+      maxScore: r.maxScore,
+      duration: r.duration,
+      status: r.status,
+      completedAt: r.completedAt,
+      createdAt: r.createdAt,
+      actions: r.actions,
+      violations: r.violations,
+      student: null,
+    }));
+  }
+
+  /**
+   * GET /practice/:lessonId/attempts?studentId=x
+   *
+   * INSTRUCTOR+ only. Returns all attempts across students by default;
+   * `filterStudentId` narrows to a single student (used by the analytics
+   * drill-down). An INSTRUCTOR must own the course; ADMIN+ are unrestricted.
+   */
+  async listAttempts(
+    actor: Actor,
+    lessonId: string,
+    filterStudentId?: string,
+  ): Promise<AttemptRow[]> {
+    const pc = await this.loadPracticeContent(lessonId);
+
+    const isOwnerOrAdmin =
       actor.role === Role.ADMIN ||
       actor.role === Role.SUPER_ADMIN ||
       (actor.role === Role.INSTRUCTOR && actor.id === pc.lesson.chapter.course.instructorId);
+    if (!isOwnerOrAdmin) {
+      throw new ForbiddenException('Chỉ giảng viên sở hữu khoá hoặc ADMIN+ được xem attempts');
+    }
 
     const where: Prisma.PracticeAttemptWhereInput = { practiceContentId: pc.id };
-    if (!isInstructor) {
-      where.studentId = actor.id;
-    }
+    if (filterStudentId) where.studentId = filterStudentId;
 
     const rows = await this.prisma.client.practiceAttempt.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      include: isInstructor
-        ? { student: { select: { id: true, name: true, email: true } } }
-        : undefined,
+      include: { student: { select: { id: true, name: true, email: true } } },
       take: 200,
     });
 

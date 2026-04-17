@@ -73,8 +73,11 @@ export function PracticeTab({
   });
 
   const attemptsQuery = useQuery({
-    queryKey: ['student-practice-attempts', lessonId],
-    queryFn: () => practiceApi.listAttempts(lessonId, accessToken!),
+    // `/my-attempts` returns only the caller's rows, so the
+    // "attempts used" counter doesn't widen when an admin browses as a
+    // student (as it did when this called `/attempts`).
+    queryKey: ['student-practice-my-attempts', lessonId],
+    queryFn: () => practiceApi.myAttempts(lessonId, accessToken!),
     enabled: !!accessToken,
   });
 
