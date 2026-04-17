@@ -66,6 +66,15 @@ export class AuthController {
     });
   }
 
+  // ---------- CURRENT USER ----------
+  // Frontend callback pages + the Zustand rehydrate call this to turn a
+  // bare access token into a usable { id, email, name, role, avatar, … }
+  // profile. Requires the default JwtAuthGuard (no @Public).
+  @Get('me')
+  getMe(@CurrentUser() user: JwtPayload) {
+    return this.auth.getCurrentUser(user.sub);
+  }
+
   // ---------- GOOGLE OAUTH ----------
   @Public()
   @Get('google')
@@ -85,7 +94,10 @@ export class AuthController {
     });
 
     const frontend = this.config.get<string>('FRONTEND_URL') ?? 'http://localhost:3000';
-    const url = new URL('/auth/callback', frontend);
+    // Next route group (auth)/callback/page.tsx maps to /callback — the
+    // parenthesised segment is purely organisational and never appears
+    // in the URL. Redirecting to /auth/callback gives 404.
+    const url = new URL('/callback', frontend);
     url.searchParams.set('accessToken', tokens.accessToken);
     url.searchParams.set('refreshToken', tokens.refreshToken);
     res.redirect(url.toString());

@@ -4,12 +4,15 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect } from 'react';
 import { toast } from 'sonner';
 
+import { authApi } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 
 /**
  * Landing target for Google OAuth callback.
- * Backend redirects here with `?accessToken=&refreshToken=`.
- * We stash tokens in the Zustand store then bounce to the home page.
+ * Backend redirects here with `?accessToken=&refreshToken=`. We fetch
+ * the full user profile from `/auth/me` (the JWT only carries sub/email/role —
+ * name + avatar live in the DB) and hydrate the Zustand store with it
+ * before bouncing the user to the home page.
  */
 export default function OAuthCallbackPage() {
   const router = useRouter();
@@ -24,21 +27,18 @@ export default function OAuthCallbackPage() {
       router.replace('/login');
       return;
     }
-    setSession({
-      accessToken,
-      refreshToken,
-      user: {
-        id: '',
-        email: '',
-        name: '',
-        role: 'STUDENT',
-        avatar: null,
-        emailVerified: true,
-        is2FAEnabled: false,
-      },
-    });
-    toast.success('Đăng nhập thành công');
-    router.replace('/');
+
+    (async () => {
+      try {
+        const user = await authApi.me(accessToken);
+        setSession({ accessToken, refreshToken, user });
+        toast.success(`Xin chào ${user.name}`);
+        router.replace('/');
+      } catch {
+        toast.error('Không lấy được thông tin tài khoản');
+        router.replace('/login');
+      }
+    })();
   }, [params, router, setSession]);
 
   return (

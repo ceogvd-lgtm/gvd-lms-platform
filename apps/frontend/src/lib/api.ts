@@ -187,6 +187,18 @@ export const authApi = {
       body: { refreshToken },
       token: accessToken,
     }),
+
+  /** GET /auth/me — returns the current user's full profile. */
+  me: (accessToken: string) =>
+    api<{
+      id: string;
+      email: string;
+      name: string;
+      role: 'SUPER_ADMIN' | 'ADMIN' | 'INSTRUCTOR' | 'STUDENT';
+      avatar: string | null;
+      emailVerified: boolean;
+      is2FAEnabled: boolean;
+    }>('/auth/me', { token: accessToken }),
 };
 
 // Backend returns one of these shapes from /auth/login

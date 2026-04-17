@@ -7,6 +7,7 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -57,6 +58,38 @@ export class AuthService {
     private readonly email: EmailService,
     private readonly config: ConfigService,
   ) {}
+
+  // =====================================================
+  // GET CURRENT USER — consumed by GET /auth/me
+  // Returns the full profile that the frontend Zustand store needs to
+  // render the header avatar, the role gates, and so on. The JWT payload
+  // only carries {sub, email, role} so it's not enough on its own —
+  // name + avatar live in the DB.
+  // =====================================================
+  async getCurrentUser(userId: string): Promise<{
+    id: string;
+    email: string;
+    name: string;
+    role: Role;
+    avatar: string | null;
+    emailVerified: boolean;
+    is2FAEnabled: boolean;
+  }> {
+    const user = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        avatar: true,
+        emailVerified: true,
+        is2FAEnabled: true,
+      },
+    });
+    if (!user) throw new NotFoundException('Không tìm thấy người dùng');
+    return user;
+  }
 
   // =====================================================
   // REGISTER
