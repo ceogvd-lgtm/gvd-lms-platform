@@ -1,7 +1,7 @@
 'use client';
 
 import { Badge, Card, CardContent } from '@lms/ui';
-import { Archive, Edit, Eye } from 'lucide-react';
+import { Archive, Edit, Eye, Send } from 'lucide-react';
 import Link from 'next/link';
 
 import type { Course } from '@/lib/curriculum';
@@ -17,6 +17,11 @@ interface CourseCardProps {
   course: Course;
   /** Triggered when instructor clicks the archive action. */
   onArchive: (course: Course) => void;
+  /**
+   * Triggered when instructor clicks "Gửi duyệt". Only shown for DRAFT
+   * courses. If omitted, the button is hidden (e.g. admin-only views).
+   */
+  onSubmitForReview?: (course: Course) => void;
   /** Path to the editor — varies by course detail loader. */
   editHref: string;
 }
@@ -27,7 +32,8 @@ interface CourseCardProps {
  * Per CLAUDE.md / Phase 04 rule, instructors **never** see a delete
  * button — only Archive (status FSM transition that admin can revert).
  */
-export function CourseCard({ course, onArchive, editHref }: CourseCardProps) {
+export function CourseCard({ course, onArchive, onSubmitForReview, editHref }: CourseCardProps) {
+  const canSubmit = course.status === 'DRAFT' && onSubmitForReview;
   return (
     <Card className="flex flex-col overflow-hidden transition-shadow hover:shadow-lg">
       <div className="aspect-video w-full overflow-hidden bg-surface-2">
@@ -72,11 +78,27 @@ export function CourseCard({ course, onArchive, editHref }: CourseCardProps) {
             <Edit className="h-3.5 w-3.5" />
             Chỉnh sửa
           </Link>
+          {canSubmit && (
+            <button
+              type="button"
+              onClick={() => onSubmitForReview!(course)}
+              className="ml-auto inline-flex h-8 items-center gap-1 rounded-button bg-primary px-3 text-xs font-semibold text-white hover:bg-primary/90 transition-colors"
+              title="Gửi duyệt cho Admin"
+            >
+              <Send className="h-3.5 w-3.5" />
+              Gửi duyệt
+            </button>
+          )}
           {course.status !== 'ARCHIVED' && (
             <button
               type="button"
               onClick={() => onArchive(course)}
-              className="ml-auto inline-flex h-8 items-center gap-1 rounded-button bg-surface-2 px-3 text-xs font-semibold text-muted hover:bg-amber-500/10 hover:text-amber-600 transition-colors"
+              className={
+                'inline-flex h-8 items-center gap-1 rounded-button bg-surface-2 px-3 text-xs font-semibold text-muted hover:bg-amber-500/10 hover:text-amber-600 transition-colors ' +
+                // When there's no Gửi duyệt button pushing it rightward,
+                // we still want Archive hugging the right edge of the card.
+                (canSubmit ? '' : 'ml-auto')
+              }
               title="Lưu trữ khoá học"
             >
               <Archive className="h-3.5 w-3.5" />
