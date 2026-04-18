@@ -6,12 +6,11 @@ import { MessageSquare, Send, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
-import { MentionComposer, type MentionComposerHandle } from './mention-composer';
-
 import { useAuthStore } from '@/lib/auth-store';
 import { connectNotificationsSocket, type AppNotification } from '@/lib/notifications';
 import { discussionsApi, type DiscussionThread } from '@/lib/students';
 
+import { MentionComposer, type MentionComposerHandle } from './mention-composer';
 
 interface DiscussionsTabProps {
   lessonId: string;
