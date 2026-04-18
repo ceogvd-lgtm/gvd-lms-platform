@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSwipeable } from 'react-swipeable';
 import { toast } from 'sonner';
 
+import { AiChatWidget } from '@/components/ai/chat-widget';
 import { DiscussionsTab } from '@/components/student/discussions-tab';
 import { LessonOutline } from '@/components/student/lesson-outline';
 import { NotesTab } from '@/components/student/notes-tab';
@@ -18,6 +19,7 @@ import { PracticeTab } from '@/components/student/practice/practice-tab';
 import { ScormPlayer } from '@/components/student/scorm-player';
 import { StudentQuiz } from '@/components/student/student-quiz';
 import { VideoPlayer } from '@/components/student/video-player';
+import { aiApi } from '@/lib/ai';
 import { ApiError, theoryContentsApi } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { chaptersApi, lessonsApi } from '@/lib/curriculum';
@@ -447,8 +449,26 @@ export default function StudentLessonPage({ params }: PageProps) {
 
       {/* Confetti — inline SVG burst on first completion */}
       {showConfetti && <ConfettiBurst />}
+
+      {/* Phase 17 — floating AI chat widget + suggested-questions
+          chips. The widget auto-hides its own button behaviour; the
+          suggested-questions endpoint is cached 24h server-side so we
+          can render it unconditionally without wasting Gemini quota. */}
+      <AiLessonOverlay lessonId={lessonId} />
     </div>
   );
+}
+
+function AiLessonOverlay({ lessonId }: { lessonId: string }) {
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const query = useQuery({
+    queryKey: ['ai-suggestions', lessonId],
+    queryFn: () => aiApi.getSuggestions(lessonId, accessToken!),
+    enabled: !!accessToken,
+    staleTime: 10 * 60_000,
+  });
+  const questions = query.data?.questions ?? [];
+  return <AiChatWidget lessonId={lessonId} suggestedQuestions={questions} />;
 }
 
 function AttachmentsTab({ items, loading }: { items: LessonAttachment[]; loading: boolean }) {

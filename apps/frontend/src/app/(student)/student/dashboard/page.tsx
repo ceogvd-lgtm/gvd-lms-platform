@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Bell, BookOpen, Flame, GraduationCap, Play, TrendingUp, Trophy } from 'lucide-react';
 import Link from 'next/link';
 
+import { AiRecommendationCards } from '@/components/ai/recommendation-cards';
 import { useAuthStore } from '@/lib/auth-store';
 import { notificationsApi, notificationTypeLabel, type AppNotification } from '@/lib/notifications';
 import { studentsApi, type DashboardPayload } from '@/lib/students';
@@ -149,6 +150,9 @@ function DashboardBody({ data }: { data: DashboardPayload }) {
         </h2>
         <RecentNotificationsCard />
       </section>
+
+      {/* Row 7 — Phase 17: AI recommendations (self-hides when empty) */}
+      <AiRecommendationCards />
     </div>
   );
 }

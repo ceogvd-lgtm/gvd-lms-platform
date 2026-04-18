@@ -16,6 +16,7 @@ import { RolesGuard } from './common/rbac/roles.guard';
 import { RedisModule } from './common/redis/redis.module';
 import { StorageCoreModule } from './common/storage/storage.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { AiModule } from './modules/ai/ai.module';
 import { AnalyticsAdminModule } from './modules/analytics/analytics.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
@@ -114,6 +115,8 @@ const monorepoRoot = join(__dirname, '..', '..', '..');
     // Phase 15 — Progress Tracking & Analytics
     ProgressModule,
     AnalyticsAdminModule,
+    // Phase 17 — AI Learning Assistant (Gemini + ChromaDB RAG)
+    AiModule,
   ],
   controllers: [AppController],
   providers: [

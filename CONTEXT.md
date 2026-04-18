@@ -1,10 +1,11 @@
 # CONTEXT.md — Dự Án LMS
 
-Cập nhật ngày: 17/04/2026
+Cập nhật ngày: 18/04/2026
 
 ## ĐANG LÀM
 
-Phase 14 — Student Dashboard & Learning Experience
+Phase 17 — AI Learning Assistant (Gemini + ChromaDB) ĐÃ XONG.
+Chuẩn bị Phase 18 (TBD).
 
 ## ĐÃ HOÀN THÀNH
 
@@ -124,6 +125,66 @@ Phase 14 — Student Dashboard & Learning Experience
   - /student/dashboard stub (enrollments list)
   - seed-demo.ts script idempotent
 - Commits: 41b1895 → 3f06d3b | Xong ngày: 17/04/2026
+
+### ✅ Phase 14 — Student Dashboard & Learning Experience
+
+- Models mới: LessonNote, Discussion, DiscussionReply, StudentXP
+- Endpoints mới: quiz-attempts grading, lesson-notes, discussions, students/\* dashboard + streak + my-learning + progress + xp
+- Pages: /student/dashboard (full), /student/my-learning, /student/progress
+- Xong ngày: 17/04/2026
+
+### ✅ Phase 15 — Progress Tracking & Analytics
+
+- ProgressService: rollup CourseEnrollment.progressPercent + lastActiveAt
+- AtRiskService: 4 rules (SLOW_START/INACTIVE/LOW_SCORE/SAFETY_VIOLATION) + BullMQ CRON_QUEUE daily
+- Endpoints: /progress/_ + /analytics/_
+- Xong ngày: 18/04/2026
+
+### ✅ Phase 16 — Certificate System
+
+- CertificateCriteria per-course + auto-issue cascade
+- CertificatesService.checkAndIssueCertificate + issueManual + getDownloadUrl + verifyByCode
+- PDF generation (pdfmake) + MinIO CERTIFICATES prefix (public)
+- Public verify page /verify/[code]
+- Xong ngày: 18/04/2026
+
+### ✅ Phase 17 — AI Learning Assistant
+
+- Models mới: AiRecommendation, AiChatMessage, AiQuotaLog, AiSuggestedQuestions
+- Migration: 20260418120000_phase17_ai_assistant
+- Module AI: GeminiService + RagService + ChatService + RecommendationsService + WeeklyReportService + QuestionSuggestService + QuotaService + GeminiProcessor + AiScheduler
+- Queue mới: GEMINI_QUEUE (max 10 jobs/phút) — KHÔNG dùng cho chat (SSE direct)
+- SDK: @google/generative-ai (KHÔNG dùng langchain)
+- Models đã verify: gemini-2.5-flash (chat), gemini-flash-lite-latest (batch), text-embedding-004 (RAG)
+- Stack mới: chromadb container trong docker-compose.dev.yml (:8000) + pdf-parse (PDF → text)
+- Endpoints mới (7):
+  - POST /api/v1/ai/chat SSE stream
+  - GET /api/v1/ai/suggestions/:lessonId
+  - GET /api/v1/ai/recommendations
+  - PATCH /api/v1/ai/recommendations/:id/read
+  - POST /api/v1/ai/index-lesson INSTRUCTOR own/ADMIN+
+  - PATCH /api/v1/ai/chat/:messageId/rating
+  - GET /api/v1/ai/health ADMIN+
+- Cron tự đăng ký trong AiScheduler.onModuleInit:
+  - recommendations-daily @ 01:00 mỗi ngày
+  - weekly-report @ 08:00 thứ Hai
+- Frontend:
+  - components/ai/chat-widget.tsx — floating 380×520 (fullscreen mobile), SSE stream, typing indicator, thumbs rating, markdown + code syntax highlight
+  - components/ai/recommendation-cards.tsx — Row 7 trong /student/dashboard (ẩn khi rỗng)
+  - components/ai/suggested-questions.tsx — collapsible chips (embed trong chat-widget empty state)
+  - components/ai/ai-health-panel.tsx — tab "AI & Quota" trong /admin/settings
+- Deps mới:
+  - backend: @google/generative-ai, chromadb, pdf-parse, @types/pdf-parse
+  - frontend: react-markdown, react-syntax-highlighter, @types/react-syntax-highlighter
+- 8 unit tests mới: 34 suites, 319/319 PASS | 31 routes build OK
+- Gotcha đã xử lý:
+  - gemini-2.5-flash cần maxOutputTokens ≥ 1000 (thinking tokens ăn budget)
+  - SSE headers: Content-Type text/event-stream + X-Accel-Buffering: no
+  - RAG retrieve graceful khi Chroma offline → trả '' thay throw
+  - Rate recommendations/weekly fallback khi Gemini error → không throw
+  - QuestionSuggest cache 24h server-side (AiSuggestedQuestions)
+  - Score raw (Phase 15 contract) — recommendations đọc lt: 50 raw, không percent
+- Xong ngày: 18/04/2026
 
 ## LƯU Ý QUAN TRỌNG
 

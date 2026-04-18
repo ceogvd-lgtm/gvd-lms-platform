@@ -13,10 +13,20 @@ import {
   TabsTrigger,
 } from '@lms/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Database, HardDrive, Mail, Save, Shield, TestTube2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  Database,
+  HardDrive,
+  Mail,
+  Save,
+  Shield,
+  Sparkles,
+  TestTube2,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
+import { AiHealthPanel } from '@/components/ai/ai-health-panel';
 import { adminSettingsApi, ApiError, type SystemSettingRow } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 
@@ -176,6 +186,9 @@ export default function AdminSettingsPage() {
           <TabsTrigger value="security">Bảo mật</TabsTrigger>
           <TabsTrigger value="storage">Lưu trữ</TabsTrigger>
           <TabsTrigger value="backup">Backup</TabsTrigger>
+          <TabsTrigger value="ai">
+            <Sparkles className="h-3.5 w-3.5" /> AI & Quota
+          </TabsTrigger>
         </TabsList>
 
         {/* ORG */}
@@ -405,6 +418,12 @@ export default function AdminSettingsPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* AI & Quota (Phase 17) — read-only; operators troubleshoot
+            Gemini + ChromaDB without leaving the settings page. */}
+        <TabsContent value="ai">
+          <AiHealthPanel />
         </TabsContent>
       </Tabs>
 
