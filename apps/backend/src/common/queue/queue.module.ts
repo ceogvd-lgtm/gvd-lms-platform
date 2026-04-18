@@ -5,6 +5,11 @@ import { ConfigService } from '@nestjs/config';
 import { WEBGL_EXTRACT_QUEUE } from '../storage/storage.constants';
 
 export const EMAIL_QUEUE = 'email';
+// Phase 16 — dedicated queue for scheduled / cron jobs (at-risk daily
+// sweep, future weekly digests). Kept separate from EMAIL_QUEUE so the
+// email processor doesn't need to branch on job name, and the cron
+// schedule is easy to inspect in BullMQ dashboards.
+export const CRON_QUEUE = 'cron';
 
 /**
  * Global BullMQ wiring — shares the REDIS_URL used by Phase 03 Redis service.
@@ -41,6 +46,18 @@ export const EMAIL_QUEUE = 'email';
         backoff: { type: 'exponential', delay: 2000 },
         removeOnComplete: { count: 100 }, // keep the last 100 for debug
         removeOnFail: { count: 500 },
+      },
+    }),
+    BullModule.registerQueue({
+      name: CRON_QUEUE,
+      defaultJobOptions: {
+        // Cron jobs mostly don't want exponential retries — if today's
+        // sweep fails, tomorrow's still fires. Keep 1 retry just in
+        // case of a transient Redis blip during the sweep itself.
+        attempts: 2,
+        backoff: { type: 'fixed', delay: 60_000 },
+        removeOnComplete: { count: 50 },
+        removeOnFail: { count: 50 },
       },
     }),
   ],

@@ -10,6 +10,7 @@ import {
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { CertificatesService } from '../certificates/certificates.service';
 import { ProgressService } from '../progress/progress.service';
 import { XpReason, XpService } from '../students/xp.service';
 
@@ -36,6 +37,10 @@ export class LessonsService {
     // module indirectly via the controller dependency graph.
     @Inject(forwardRef(() => ProgressService))
     private readonly progress: ProgressService,
+    // Phase 16 — tries to auto-issue a certificate after every lesson
+    // completion transition. Fire-and-forget; the service handles its
+    // own idempotency (ALREADY_ISSUED short-circuit).
+    private readonly certificates: CertificatesService,
   ) {}
 
   private async findLessonWithCourse(id: string) {
@@ -295,6 +300,17 @@ export class LessonsService {
       await this.progress
         .calculateCourseProgress(studentId, lesson.chapter.courseId)
         .catch(() => undefined);
+
+      // Phase 16 — try to issue certificate if all criteria met. Only
+      // fires on first completion to avoid re-issuance loops. The
+      // service itself is idempotent (ALREADY_ISSUED short-circuits)
+      // so even if both conditions below are true we can't
+      // accidentally double-issue.
+      if (isFirstComplete) {
+        await this.certificates
+          .checkAndIssueCertificate(studentId, lesson.chapter.courseId)
+          .catch(() => undefined);
+      }
     }
 
     return {

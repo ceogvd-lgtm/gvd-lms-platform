@@ -5,6 +5,7 @@ import { Test } from '@nestjs/testing';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { CertificatesService } from '../certificates/certificates.service';
 import { ProgressService } from '../progress/progress.service';
 import { XpService } from '../students/xp.service';
 
@@ -64,6 +65,16 @@ describe('LessonsService — completeForStudent', () => {
             calculateCourseProgress: jest
               .fn()
               .mockResolvedValue({ progressPercent: 0, completed: false }),
+          },
+        },
+        // Phase 16 — LessonsService now calls CertificatesService on first
+        // completion transition. Stub with a resolved no-op.
+        {
+          provide: CertificatesService,
+          useValue: {
+            checkAndIssueCertificate: jest
+              .fn()
+              .mockResolvedValue({ issued: false, reason: 'stub' }),
           },
         },
       ],

@@ -4,6 +4,7 @@ import { Badge, Card, CardContent, DataTable, type ColumnDef } from '@lms/ui';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Award, Ban, CheckCircle2, TrendingUp, XCircle } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 import { RevokeCertificateModal } from '@/components/admin/revoke-certificate-modal';
 import { adminCertificatesApi, type CertificateRow } from '@/lib/api';
@@ -108,23 +109,45 @@ export default function AdminCertificatesPage() {
     [],
   );
 
-  const rowActions = (cert: CertificateRow) => {
-    if (cert.status === 'REVOKED') {
-      return (
-        <span className="text-xs italic text-muted" title={cert.revokedReason ?? undefined}>
-          Đã thu hồi
-        </span>
-      );
+  const downloadPdf = async (certId: string) => {
+    if (!accessToken) return;
+    toast.info('Đang tạo PDF…');
+    try {
+      const { certificatesApi } = await import('@/lib/certificates');
+      const res = await certificatesApi.download(certId, accessToken);
+      window.open(res.url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Tải PDF thất bại');
     }
+  };
+
+  const rowActions = (cert: CertificateRow) => {
     return (
-      <button
-        type="button"
-        onClick={() => setRevoking(cert)}
-        className="inline-flex items-center gap-1 rounded-button bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 transition-colors"
-      >
-        <Ban className="h-3.5 w-3.5" />
-        Thu hồi
-      </button>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => downloadPdf(cert.id)}
+          className="inline-flex items-center gap-1 rounded-button bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
+          title="Tải PDF"
+        >
+          <Award className="h-3.5 w-3.5" />
+          PDF
+        </button>
+        {cert.status === 'REVOKED' ? (
+          <span className="text-xs italic text-muted" title={cert.revokedReason ?? undefined}>
+            Đã thu hồi
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setRevoking(cert)}
+            className="inline-flex items-center gap-1 rounded-button bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 transition-colors"
+          >
+            <Ban className="h-3.5 w-3.5" />
+            Thu hồi
+          </button>
+        )}
+      </div>
     );
   };
 

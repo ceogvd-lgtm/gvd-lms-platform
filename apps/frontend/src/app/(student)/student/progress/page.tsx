@@ -12,7 +12,6 @@ import {
   Printer,
   TrendingUp,
 } from 'lucide-react';
-import Link from 'next/link';
 import { useState } from 'react';
 import {
   Bar,
@@ -326,6 +325,27 @@ function CertificatesRow() {
 
 function CertificateCard({ cert }: { cert: MyCertificate }) {
   const [copying, setCopying] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const accessToken = useAuthStore((s) => s.accessToken);
+
+  // Phase 16 — fetch the real PDF via /certificates/:id/download.
+  // Falls back to the Phase 14 browser-print page if the MinIO PDF
+  // isn't there yet (e.g. background generation failed).
+  const downloadPdf = async () => {
+    if (!accessToken || downloading) return;
+    setDownloading(true);
+    toast.info('Đang chuẩn bị PDF…');
+    try {
+      const { certificatesApi } = await import('@/lib/certificates');
+      const res = await certificatesApi.download(cert.id, accessToken);
+      window.open(res.url, '_blank', 'noopener,noreferrer');
+      toast.success(`Đã mở ${res.filename}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Tải PDF thất bại');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const statusTone: 'success' | 'warning' | 'error' =
     cert.status === 'ACTIVE' ? 'success' : cert.status === 'EXPIRED' ? 'warning' : 'error';
@@ -380,11 +400,15 @@ function CertificateCard({ cert }: { cert: MyCertificate }) {
           </p>
         </div>
         <div className="mt-auto flex flex-wrap gap-2">
-          <Button asChild size="sm" variant="outline" className="flex-1 min-w-[120px]">
-            <Link href={`/student/certificates/${cert.id}/print`} target="_blank">
-              <Printer className="h-3.5 w-3.5" />
-              Tải PDF
-            </Link>
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex-1 min-w-[120px]"
+            onClick={downloadPdf}
+            disabled={downloading}
+          >
+            <Printer className="h-3.5 w-3.5" />
+            {downloading ? 'Đang tạo…' : 'Tải PDF'}
           </Button>
           <Button
             size="sm"
@@ -395,6 +419,21 @@ function CertificateCard({ cert }: { cert: MyCertificate }) {
           >
             <LinkIcon className="h-3.5 w-3.5" />
             Copy link
+          </Button>
+          {/* LinkedIn share — only when cert is still ACTIVE. We don't
+              have status on the MyCertificate shape directly so we rely
+              on the gallery filtering out revoked certs on backend. */}
+          <Button asChild size="sm" variant="outline" className="flex-1 min-w-[120px]">
+            <a
+              href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(
+                `${typeof window !== 'undefined' ? window.location.origin : ''}/verify/${cert.code}`,
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <LinkIcon className="h-3.5 w-3.5" />
+              LinkedIn
+            </a>
           </Button>
         </div>
       </CardContent>

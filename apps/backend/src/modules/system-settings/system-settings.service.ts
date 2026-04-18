@@ -45,6 +45,10 @@ const ALLOWED_KEYS = [
   // Storage limits
   'storage.maxPerUserMB',
   'storage.maxPerCourseMB',
+  // Phase 15 post-verify — scheduled analytics report subscribers.
+  // Stored as a JSON array of admin emails; read by the BullMQ
+  // repeat job that fires the weekly digest + daily at-risk sweep.
+  'analytics.reportSubscribers',
 ] as const;
 
 type AllowedKey = (typeof ALLOWED_KEYS)[number];
@@ -200,6 +204,18 @@ export class SystemSettingsService {
           throw new BadRequestException(`${key} phải là số dương`);
         }
         return;
+      case 'analytics.reportSubscribers': {
+        if (!Array.isArray(value)) {
+          throw new BadRequestException(`${key} phải là mảng email`);
+        }
+        const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        for (const v of value) {
+          if (typeof v !== 'string' || !emailRe.test(v)) {
+            throw new BadRequestException(`${key}: email không hợp lệ — "${String(v)}"`);
+          }
+        }
+        return;
+      }
     }
   }
 
