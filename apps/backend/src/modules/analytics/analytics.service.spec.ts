@@ -25,7 +25,7 @@ describe('AnalyticsService', () => {
     client: {
       lesson: { findMany: jest.Mock };
       lessonProgress: { aggregate: jest.Mock; findMany: jest.Mock };
-      quizAttempt: { count: jest.Mock };
+      quizAttempt: { count: jest.Mock; findMany: jest.Mock };
       courseEnrollment: { findMany: jest.Mock };
     };
   };
@@ -35,7 +35,7 @@ describe('AnalyticsService', () => {
       client: {
         lesson: { findMany: jest.fn() },
         lessonProgress: { aggregate: jest.fn(), findMany: jest.fn() },
-        quizAttempt: { count: jest.fn() },
+        quizAttempt: { count: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
         courseEnrollment: { findMany: jest.fn() },
       },
     };
@@ -101,6 +101,85 @@ describe('AnalyticsService', () => {
 
       const rows = await service.getLessonDifficulty({ id: 'admin', role: Role.ADMIN });
       expect(rows).toHaveLength(0);
+    });
+
+    // Phase 15 post-verify fix — avgScore must never exceed 100%.
+    // When a lesson has a quiz we compute percents from (score / maxScore),
+    // clamp per-attempt, and average the clamped values.
+    it('computes avgScore as percent via (score / maxScore) × 100, clamped 0..100', async () => {
+      prisma.client.lesson.findMany.mockResolvedValue([
+        {
+          id: 'l-quiz',
+          title: 'With quiz',
+          chapter: { course: { id: 'c1', title: 'Course' } },
+          // A quiz whose max is 10 pts — old code would read
+          // LessonProgress.score=11 and report 11% as "11 / 100 * 100".
+          // New code reads QuizAttempt.score / QuizAttempt.maxScore so
+          // it correctly reports each attempt's percent.
+          quizzes: [{ id: 'q1', passScore: 70 }],
+        },
+      ]);
+      prisma.client.quizAttempt.findMany.mockResolvedValue([
+        { score: 8, maxScore: 10 }, // 80%
+        { score: 5, maxScore: 10 }, // 50%
+        { score: 11, maxScore: 10 }, // bonus → clamped to 100%
+      ]);
+      prisma.client.lessonProgress.aggregate.mockResolvedValue({
+        _avg: { timeSpent: 150 },
+        _count: { _all: 3 },
+      });
+
+      const rows = await service.getLessonDifficulty({ id: 'admin', role: Role.ADMIN });
+      expect(rows).toHaveLength(1);
+      // (80 + 50 + 100) / 3 = 76.67 → rounded 77
+      expect(rows[0]!.avgScore).toBe(77);
+      expect(rows[0]!.avgScore).toBeLessThanOrEqual(100);
+      expect(rows[0]!.attemptCount).toBe(3);
+    });
+
+    // Quiz passScore is 70; with 2 fails (40%, 55%) and 1 pass (80%) the
+    // failRate is 2/3 → 67.
+    it('computes failRate from per-attempt percent (maxScore varies)', async () => {
+      prisma.client.lesson.findMany.mockResolvedValue([
+        {
+          id: 'l1',
+          title: 'Hard quiz',
+          chapter: { course: { id: 'c1', title: 'Course' } },
+          quizzes: [{ id: 'q1', passScore: 70 }],
+        },
+      ]);
+      prisma.client.quizAttempt.findMany.mockResolvedValue([
+        { score: 4, maxScore: 10 }, // 40% (fail)
+        { score: 11, maxScore: 20 }, // 55% (fail)
+        { score: 8, maxScore: 10 }, // 80% (pass)
+      ]);
+      prisma.client.lessonProgress.aggregate.mockResolvedValue({
+        _avg: { timeSpent: 100 },
+        _count: { _all: 3 },
+      });
+
+      const rows = await service.getLessonDifficulty({ id: 'admin', role: Role.ADMIN });
+      expect(rows[0]!.failRate).toBe(67);
+    });
+
+    // No-quiz fallback — clamp legacy raw scores > 100 so they don't
+    // bleed into the UI.
+    it('clamps legacy LessonProgress.score > 100 when no quiz is attached', async () => {
+      prisma.client.lesson.findMany.mockResolvedValue([
+        {
+          id: 'l-legacy',
+          title: 'Legacy row with raw score > 100',
+          chapter: { course: { id: 'c1', title: 'Course' } },
+          quizzes: [],
+        },
+      ]);
+      prisma.client.lessonProgress.aggregate.mockResolvedValue({
+        _avg: { score: 110, timeSpent: 300 },
+        _count: { _all: 1 },
+      });
+
+      const rows = await service.getLessonDifficulty({ id: 'admin', role: Role.ADMIN });
+      expect(rows[0]!.avgScore).toBe(100);
     });
   });
 
