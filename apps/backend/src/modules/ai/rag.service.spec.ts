@@ -15,11 +15,14 @@ describe('RagService', () => {
   beforeEach(async () => {
     geminiMock = { embed: jest.fn() };
     quotaMock = { checkAndIncrement: jest.fn().mockResolvedValue({ requests: 1, tokens: 0 }) };
+    // Point Chroma at a host/port that's guaranteed to fail so the
+    // "graceful fallback" tests stay robust even when a real Chroma
+    // container is listening on localhost:8000 during dev.
     configMock = {
       get: jest.fn((k: string) => {
         if (k === 'CHROMA_COLLECTION') return 'test_col';
-        if (k === 'CHROMA_HOST') return 'localhost';
-        if (k === 'CHROMA_PORT') return '8000';
+        if (k === 'CHROMA_HOST') return '127.0.0.1';
+        if (k === 'CHROMA_PORT') return '1'; // port 1 is never open
         return undefined;
       }),
     };
