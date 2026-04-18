@@ -20,16 +20,23 @@ module.exports = {
     node: true,
     es2022: true,
   },
+  settings: {
+    // Classify `@/*` aliases as `internal` (Next.js path-alias convention).
+    // Without this, eslint-plugin-import falls back to default heuristics
+    // that depend on cwd, and lint-staged (which runs from the monorepo
+    // root) ends up sorting `@/lib/foo` after relative `./sibling`
+    // imports while `next build` — invoked from apps/frontend — sorts
+    // them before. Declaring it explicitly here keeps pre-commit
+    // autofix and `next build`'s eslint in agreement.
+    'import/internal-regex': '^@/',
+  },
   rules: {
     '@typescript-eslint/no-unused-vars': [
       'error',
       { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
     ],
     '@typescript-eslint/no-explicit-any': 'warn',
-    '@typescript-eslint/consistent-type-imports': [
-      'error',
-      { prefer: 'type-imports' },
-    ],
+    '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
     'import/order': [
       'error',
       {

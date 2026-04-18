@@ -286,34 +286,75 @@ export class AnalyticsService {
 
     const rows: LessonDifficultyRow[] = [];
     for (const l of lessons) {
-      const progAgg = await this.prisma.client.lessonProgress.aggregate({
-        where: { lessonId: l.id, score: { not: null } },
-        _avg: { score: true, timeSpent: true },
-        _count: { _all: true },
-      });
-      if (progAgg._count._all === 0) continue;
-
       const quiz = l.quizzes[0];
+
+      // ------- avgScore (percent 0..100) -------
+      //
+      // Historically we averaged `LessonProgress.score` directly — but
+      // that column stores the raw quiz score (e.g. 11 / 10 → 110) not a
+      // percentage, which produced > 100% on the difficulty panel.
+      //
+      // Phase 15 post-verify fix: compute the percent per-attempt from
+      // (score / maxScore), clamp each row to [0, 100], and average the
+      // clamped values. Covers the common case (lesson has a quiz) and
+      // the edge cases:
+      //   - no quiz      → fall back to lessonProgress.score clamped
+      //   - no attempts  → skip lesson entirely (same as before)
+      let avgScore: number;
+      let attemptCount: number;
+      let avgTimeSpent: number;
+
+      if (quiz) {
+        const attempts = await this.prisma.client.quizAttempt.findMany({
+          where: { quizId: quiz.id, completedAt: { not: null } },
+          select: { score: true, maxScore: true },
+        });
+        if (attempts.length === 0) continue;
+        const percents = attempts.map((a) => {
+          if (a.maxScore <= 0) return 0;
+          return Math.min(100, Math.max(0, (a.score / a.maxScore) * 100));
+        });
+        avgScore = Math.round(percents.reduce((s, p) => s + p, 0) / percents.length);
+        attemptCount = attempts.length;
+
+        const timeAgg = await this.prisma.client.lessonProgress.aggregate({
+          where: { lessonId: l.id, timeSpent: { gt: 0 } },
+          _avg: { timeSpent: true },
+        });
+        avgTimeSpent = Math.round(timeAgg._avg.timeSpent ?? 0);
+      } else {
+        const progAgg = await this.prisma.client.lessonProgress.aggregate({
+          where: { lessonId: l.id, score: { not: null } },
+          _avg: { score: true, timeSpent: true },
+          _count: { _all: true },
+        });
+        if (progAgg._count._all === 0) continue;
+        const raw = progAgg._avg.score ?? 0;
+        // Clamp to [0, 100] even though there's no reliable maxScore —
+        // prevents "110%" bleed from legacy data.
+        avgScore = Math.min(100, Math.max(0, Math.round(raw)));
+        attemptCount = progAgg._count._all;
+        avgTimeSpent = Math.round(progAgg._avg.timeSpent ?? 0);
+      }
+
+      // ------- failRate -------
+      // Failed = attempt whose percent < quiz.passScore. Computed row-
+      // per-row (not via a Prisma where) because each attempt's
+      // maxScore can differ (random-pick quizzes, question-weighting).
       let failRate = 0;
       if (quiz) {
-        const [totalAttempts, failedAttempts] = await Promise.all([
-          this.prisma.client.quizAttempt.count({
-            where: { quizId: quiz.id, completedAt: { not: null } },
-          }),
-          this.prisma.client.quizAttempt.count({
-            where: {
-              quizId: quiz.id,
-              completedAt: { not: null },
-              // Failed = score percentage < passScore
-              // We use a Prisma raw expression-free approximation: score < passScore
-              // assuming maxScore = 100 for quiz (which isn't always true). The
-              // accurate version would compute ratio per row; good enough for a
-              // difficulty heuristic.
-              score: { lt: quiz.passScore },
-            },
-          }),
-        ]);
-        failRate = totalAttempts > 0 ? Math.round((failedAttempts / totalAttempts) * 100) : 0;
+        const attempts = await this.prisma.client.quizAttempt.findMany({
+          where: { quizId: quiz.id, completedAt: { not: null } },
+          select: { score: true, maxScore: true },
+        });
+        if (attempts.length > 0) {
+          const failed = attempts.filter((a) => {
+            if (a.maxScore <= 0) return false;
+            const pct = (a.score / a.maxScore) * 100;
+            return pct < quiz.passScore;
+          }).length;
+          failRate = Math.round((failed / attempts.length) * 100);
+        }
       }
 
       rows.push({
@@ -321,10 +362,10 @@ export class AnalyticsService {
         lessonTitle: l.title,
         courseId: l.chapter.course.id,
         courseTitle: l.chapter.course.title,
-        avgScore: Math.round(progAgg._avg.score ?? 0),
-        attemptCount: progAgg._count._all,
+        avgScore,
+        attemptCount,
         failRate,
-        avgTimeSpent: Math.round(progAgg._avg.timeSpent ?? 0),
+        avgTimeSpent,
       });
     }
 
