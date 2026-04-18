@@ -28,6 +28,18 @@ export const STORAGE_PREFIXES = {
  * authorises the specific key it was signed for, so the index would load
  * but every child asset would 403.
  *
+ * VIDEO joined the public list in Phase 14 post-merge — not for relative-
+ * path reasons but for player lifetime: the `<video>` element holds on to
+ * the src across the whole learning session (often > 1 h with pauses +
+ * notes-taking), and a presigned URL baked into `TheoryContent.contentUrl`
+ * at upload time silently expires mid-session, producing a black player
+ * with no error. The browser retrying with the same URL still 403s, and
+ * the student has no way to recover short of a full page reload. Making
+ * the prefix public avoids that failure mode entirely; the object keys
+ * are still random UUIDs so they're not enumerable, and access control
+ * lives at the "who can open the lesson" layer (enrolment check before
+ * the player is even rendered).
+ *
  * Access control for these lessons lives at the "who can start an
  * attempt / view a lesson" layer (see PracticeService.startAttempt
  * ownership check, theoryContentsApi enrolment check) — not at the
@@ -39,6 +51,7 @@ export const PUBLIC_PREFIXES: readonly string[] = [
   STORAGE_PREFIXES.THUMBNAILS,
   STORAGE_PREFIXES.WEBGL,
   STORAGE_PREFIXES.SCORM,
+  STORAGE_PREFIXES.VIDEO,
 ];
 
 /** Size limits per upload type (bytes). */
