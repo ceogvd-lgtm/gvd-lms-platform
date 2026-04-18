@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { CertificatesService } from '../certificates/certificates.service';
 import { ProgressService } from '../progress/progress.service';
 import { XpService } from '../students/xp.service';
 
@@ -45,6 +46,8 @@ describe('LessonsService — getContext', () => {
         // Phase 15 — getContext doesn't touch ProgressService, but the
         // class constructor requires it so we wire a stub.
         { provide: ProgressService, useValue: { calculateCourseProgress: jest.fn() } },
+        // Phase 16 — same for CertificatesService.
+        { provide: CertificatesService, useValue: { checkAndIssueCertificate: jest.fn() } },
       ],
     }).compile();
     service = mod.get(LessonsService);

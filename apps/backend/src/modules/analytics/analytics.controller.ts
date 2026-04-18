@@ -119,23 +119,24 @@ export class AnalyticsController {
   // POST /analytics/schedule-report
   // =====================================================
   /**
-   * Register one or more admin emails to receive the weekly PDF digest.
-   * Stored in-memory for Phase 15 — moving to SystemSetting row is a
-   * Phase 16 task. `sendNow=true` fires the at-risk sweep immediately
-   * so the admin can verify the pipeline without waiting a week.
+   * Register one or more admin emails to receive the scheduled digest.
+   * Phase 16 — subscriber list persisted as the SystemSetting row
+   * `analytics.reportSubscribers`, so restarts no longer wipe the
+   * config. `sendNow=true` fires the at-risk sweep immediately for
+   * smoke-testing without waiting for the 08:00 cron.
    */
   @Post('schedule-report')
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   async scheduleReport(@Body() dto: ScheduleReportDto) {
     for (const email of dto.recipients) {
-      this.scheduled.addSubscriber(email);
+      await this.scheduled.addSubscriber(email);
     }
     let immediate: { flagged: number; notificationsSent: number } | undefined;
     if (dto.sendNow) {
       immediate = await this.scheduled.runAtRiskSweepNow();
     }
     return {
-      subscribers: this.scheduled.listSubscribers(),
+      subscribers: await this.scheduled.listSubscribers(),
       sentNow: immediate ?? null,
     };
   }

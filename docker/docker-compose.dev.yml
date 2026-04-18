@@ -70,6 +70,29 @@ services:
       exit 0;
       "
 
+  # Phase 16 — Mailpit for catching outbound email in local dev.
+  # SMTP lands on :1025, the UI on http://localhost:8025. Configure
+  # .env with SMTP_HOST=localhost SMTP_PORT=1025 (no auth needed) and
+  # every template the app sends is viewable in the browser — Phase
+  # 15 certificate flow + at-risk reminders can be eyeballed without
+  # needing a real SMTP provider.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: lms-mailpit-dev
+    restart: unless-stopped
+    ports:
+      - '1025:1025' # SMTP
+      - '8025:8025' # Web UI
+    environment:
+      MP_MAX_MESSAGES: 500
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://localhost:8025']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
 volumes:
   lms_postgres_data:
   lms_redis_data:

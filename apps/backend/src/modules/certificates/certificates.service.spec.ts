@@ -6,6 +6,7 @@ import { Test } from '@nestjs/testing';
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
+import { CertificateCriteriaService } from './certificate-criteria.service';
 import { CertificatesService } from './certificates.service';
 
 describe('CertificatesService', () => {
@@ -224,6 +225,173 @@ describe('CertificatesService', () => {
       expect(summary.expired).toBe(2);
       // (60 + 80) / 2 = 70
       expect(summary.avgPassRate).toBe(70);
+    });
+  });
+
+  // =====================================================
+  // Phase 16 — calculateGrade (static, no DI)
+  // =====================================================
+  describe('calculateGrade', () => {
+    const thresholds = { excellent: 90, good: 80, pass: 70 };
+
+    it('returns "Xuất sắc" for score 95', () => {
+      expect(CertificatesService.calculateGrade(95, thresholds)).toBe('Xuất sắc');
+    });
+    it('returns "Giỏi" for score 83', () => {
+      expect(CertificatesService.calculateGrade(83, thresholds)).toBe('Giỏi');
+    });
+    it('returns "Đạt" for score 72', () => {
+      expect(CertificatesService.calculateGrade(72, thresholds)).toBe('Đạt');
+    });
+    it('returns null when score is below pass threshold', () => {
+      expect(CertificatesService.calculateGrade(65, thresholds)).toBeNull();
+    });
+    it('respects exact threshold boundary (score===excellent → Xuất sắc)', () => {
+      expect(CertificatesService.calculateGrade(90, thresholds)).toBe('Xuất sắc');
+    });
+  });
+
+  // =====================================================
+  // Phase 16 — checkAndIssueCertificate
+  // =====================================================
+  describe('checkAndIssueCertificate', () => {
+    let svc: CertificatesService;
+    let prisma2: typeof prismaMock.client & {
+      courseEnrollment: { findUnique: jest.Mock };
+      quizAttempt: { aggregate: jest.Mock };
+      practiceAttempt: { aggregate: jest.Mock; count: jest.Mock };
+      lessonProgress: { count: jest.Mock };
+      certificate: typeof prismaMock.client.certificate & {
+        findFirst: jest.Mock;
+        create: jest.Mock;
+      };
+    };
+    let criteriaMock: { get: jest.Mock };
+
+    beforeEach(async () => {
+      prisma2 = {
+        ...prismaMock.client,
+        certificate: {
+          ...prismaMock.client.certificate,
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({
+            id: 'new-cert',
+            code: 'NEW-CODE',
+            studentId: 's-1',
+            courseId: 'c-1',
+            grade: 'Xuất sắc',
+            finalScore: 95,
+            issuedAt: new Date(),
+            status: CertificateStatus.ACTIVE,
+          }),
+        },
+        courseEnrollment: {
+          findUnique: jest.fn().mockResolvedValue({ progressPercent: 100, completedAt: null }),
+        },
+        quizAttempt: {
+          aggregate: jest.fn().mockResolvedValue({
+            _sum: { score: 95, maxScore: 100 },
+            _count: { _all: 1 },
+          }),
+        },
+        practiceAttempt: {
+          aggregate: jest.fn().mockResolvedValue({
+            _sum: { score: 0, maxScore: 0 },
+            _count: { _all: 0 },
+          }),
+          count: jest.fn().mockResolvedValue(0),
+        },
+        lessonProgress: { count: jest.fn().mockResolvedValue(0) },
+      } as never;
+
+      criteriaMock = {
+        get: jest.fn().mockResolvedValue({
+          minPassScore: 70,
+          minProgress: 100,
+          minPracticeScore: 0,
+          noSafetyViolation: true,
+          requiredLessons: [],
+          validityMonths: null,
+          gradeThresholds: { excellent: 90, good: 80, pass: 70 },
+          customCriteria: null,
+          exists: true,
+        }),
+      };
+
+      const mod: TestingModule = await Test.createTestingModule({
+        providers: [
+          CertificatesService,
+          { provide: PrismaService, useValue: { client: prisma2 } },
+          { provide: AuditService, useValue: { log: jest.fn() } },
+          {
+            provide: CertificateCriteriaService,
+            useValue: criteriaMock,
+          },
+        ],
+      }).compile();
+      svc = mod.get(CertificatesService);
+    });
+
+    it('issues cert when all criteria are met', async () => {
+      const result = await svc.checkAndIssueCertificate('s-1', 'c-1');
+      expect(result.issued).toBe(true);
+      expect(result.grade).toBe('Xuất sắc');
+      expect(result.finalScore).toBe(95);
+      expect(prisma2.certificate.create).toHaveBeenCalled();
+    });
+
+    it('does NOT issue when progressPercent < minProgress', async () => {
+      prisma2.courseEnrollment.findUnique.mockResolvedValue({
+        progressPercent: 60,
+        completedAt: null,
+      });
+      const result = await svc.checkAndIssueCertificate('s-1', 'c-1');
+      expect(result.issued).toBe(false);
+      expect(result.reason).toContain('progress');
+      expect(prisma2.certificate.create).not.toHaveBeenCalled();
+    });
+
+    it('does NOT issue when student has a critical safety violation', async () => {
+      prisma2.practiceAttempt.count.mockResolvedValue(1);
+      const result = await svc.checkAndIssueCertificate('s-1', 'c-1');
+      expect(result.issued).toBe(false);
+      expect(result.reason).toContain('safety');
+      expect(prisma2.certificate.create).not.toHaveBeenCalled();
+    });
+
+    it('does NOT re-issue when student already has an ACTIVE cert (idempotent)', async () => {
+      prisma2.certificate.findFirst.mockResolvedValue({ id: 'existing' });
+      const result = await svc.checkAndIssueCertificate('s-1', 'c-1');
+      expect(result.issued).toBe(false);
+      expect(result.reason).toBe('ALREADY_ISSUED');
+    });
+
+    it('does NOT issue when a required lesson is not COMPLETED', async () => {
+      criteriaMock.get.mockResolvedValue({
+        minPassScore: 70,
+        minProgress: 100,
+        minPracticeScore: 0,
+        noSafetyViolation: true,
+        requiredLessons: ['l-a', 'l-b'],
+        validityMonths: null,
+        gradeThresholds: { excellent: 90, good: 80, pass: 70 },
+        customCriteria: null,
+        exists: true,
+      });
+      prisma2.lessonProgress.count.mockResolvedValue(1); // only 1/2 done
+      const result = await svc.checkAndIssueCertificate('s-1', 'c-1');
+      expect(result.issued).toBe(false);
+      expect(result.reason).toContain('required lessons');
+    });
+
+    it('does NOT issue when avg quiz score is below minPassScore', async () => {
+      prisma2.quizAttempt.aggregate.mockResolvedValue({
+        _sum: { score: 50, maxScore: 100 },
+        _count: { _all: 2 },
+      });
+      const result = await svc.checkAndIssueCertificate('s-1', 'c-1');
+      expect(result.issued).toBe(false);
+      expect(result.reason).toMatch(/avgScore/);
     });
   });
 });

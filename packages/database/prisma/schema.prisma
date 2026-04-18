@@ -473,13 +473,18 @@ model VideoProgress {
 model CertificateCriteria {
   id                String   @id @default(cuid())
   courseId          String   @unique
-  minPassScore      Int
-  minProgress       Int
-  requiredLessons   String[]
-  minPracticeScore  Int
+  minPassScore      Int      @default(70)
+  minProgress       Int      @default(100)
+  requiredLessons   String[] @default([])
+  minPracticeScore  Int      @default(0)
   noSafetyViolation Boolean  @default(true)
   validityMonths    Int?
   customCriteria    Json?
+  // Phase 16 — grade thresholds as a JSON map so the instructor can
+  // tweak "Xuất sắc / Giỏi / Đạt" per course without a schema change.
+  // Default: {"excellent":90,"good":80,"pass":70}. Read by
+  // CertificatesService.calculateGrade on issuance.
+  gradeThresholds   Json     @default("{\"excellent\":90,\"good\":80,\"pass\":70}")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -498,6 +503,15 @@ model Certificate {
   expiresAt     DateTime?
   revokedAt     DateTime?
   revokedReason String?
+  // Phase 16 — snapshot of the grade + score at issuance time. We never
+  // recompute these (the student's ongoing quiz attempts shouldn't
+  // affect their already-awarded grade), so store them as plain scalars.
+  grade         String? // "Xuất sắc" | "Giỏi" | "Đạt"
+  finalScore    Int?    // 0..100 — percent used for the grade calc
+  // Phase 16 — MinIO key (not a full URL; we re-sign on each GET
+  // /certificates/:id/download so students can share links that don't
+  // expire awkwardly mid-browser-session).
+  pdfUrl        String?
 
   student User   @relation(fields: [studentId], references: [id])
   course  Course @relation(fields: [courseId], references: [id])
