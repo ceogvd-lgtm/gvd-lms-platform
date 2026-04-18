@@ -377,17 +377,27 @@ model QuizAttempt {
 // =========================================================
 
 model CourseEnrollment {
-  id          String    @id @default(cuid())
-  courseId    String
-  studentId   String
-  enrolledAt  DateTime  @default(now())
-  completedAt DateTime?
+  id              String    @id @default(cuid())
+  courseId        String
+  studentId       String
+  enrolledAt      DateTime  @default(now())
+  completedAt     DateTime?
+  // Phase 15 — denormalised rollup of LessonProgress so /student/:id/courses
+  // can answer in one query without recalculating from the lesson table
+  // every request. Updated by ProgressService.calculateCourseProgress
+  // after any COMPLETED / quiz-pass / practice-pass cascade.
+  progressPercent Int       @default(0)
+  // Last time the student did anything in this course (lesson view, quiz
+  // attempt, practice attempt). Drives the "inactive > 5 days" at-risk
+  // rule + the heatmap activity feed.
+  lastActiveAt    DateTime  @default(now())
 
   course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
   student User   @relation(fields: [studentId], references: [id])
 
   @@unique([courseId, studentId])
   @@index([studentId])
+  @@index([lastActiveAt])
   @@map("course_enrollments")
 }
 
@@ -411,23 +421,30 @@ model LessonProgress {
 }
 
 model PracticeAttempt {
-  id                String         @id @default(cuid())
-  practiceContentId String
-  studentId         String
-  score             Int
-  maxScore          Int
-  actions           Json
-  violations        Json
-  duration          Int
-  status            ProgressStatus @default(IN_PROGRESS)
-  completedAt       DateTime?
-  createdAt         DateTime       @default(now())
+  id                    String         @id @default(cuid())
+  practiceContentId     String
+  studentId             String
+  score                 Int
+  maxScore              Int
+  actions               Json
+  violations            Json
+  duration              Int
+  status                ProgressStatus @default(IN_PROGRESS)
+  completedAt           DateTime?
+  createdAt             DateTime       @default(now())
+  // Phase 15 — fast flag for "student committed a critical safety
+  // violation in this attempt". The full detail stays in the JSON
+  // `violations` column; this scalar is what the at-risk detector
+  // indexes on, so a single WHERE clause across thousands of attempts
+  // doesn't have to open + parse every JSON blob.
+  hasCriticalViolation  Boolean        @default(false)
 
   practiceContent PracticeContent @relation(fields: [practiceContentId], references: [id], onDelete: Cascade)
   student         User            @relation(fields: [studentId], references: [id])
 
   @@index([practiceContentId, studentId])
   @@index([studentId])
+  @@index([studentId, hasCriticalViolation])
   @@map("practice_attempts")
 }
 

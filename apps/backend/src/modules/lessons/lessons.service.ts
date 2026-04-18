@@ -1,13 +1,16 @@
 import { ProgressStatus, Role } from '@lms/database';
 import {
   BadRequestException,
+  forwardRef,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { ProgressService } from '../progress/progress.service';
 import { XpReason, XpService } from '../students/xp.service';
 
 import { CreateLessonDto } from './dto/create-lesson.dto';
@@ -28,6 +31,11 @@ export class LessonsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly xp: XpService,
+    // Phase 15 — keeps CourseEnrollment.progressPercent in sync with
+    // LessonProgress. forwardRef because ProgressModule imports this
+    // module indirectly via the controller dependency graph.
+    @Inject(forwardRef(() => ProgressService))
+    private readonly progress: ProgressService,
   ) {}
 
   private async findLessonWithCourse(id: string) {
@@ -194,6 +202,9 @@ export class LessonsService {
       select: {
         id: true,
         isDeleted: true,
+        // Phase 15 — include chapter.courseId so we can trigger the
+        // CourseEnrollment rollup at the end without a second round-trip.
+        chapter: { select: { courseId: true } },
         theoryContent: {
           select: {
             id: true,
@@ -274,6 +285,16 @@ export class LessonsService {
       courseXpAwarded = await this.checkAndAwardCourseCompletion(studentId, lessonId).catch(
         () => false,
       );
+    }
+
+    // Phase 15 — keep CourseEnrollment.progressPercent + lastActiveAt in
+    // sync so the dashboard rollup query doesn't have to recount lessons
+    // on every read. Fire-and-forget — a calculation error shouldn't
+    // block the HTTP response the UI is already waiting on.
+    if (lesson.chapter?.courseId) {
+      await this.progress
+        .calculateCourseProgress(studentId, lesson.chapter.courseId)
+        .catch(() => undefined);
     }
 
     return {

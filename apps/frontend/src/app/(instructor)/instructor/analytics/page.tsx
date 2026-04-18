@@ -15,9 +15,13 @@ import { Download, Mail } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
+import { ActivityHeatmap } from '@/components/analytics/activity-heatmap';
+import { ExportPanel } from '@/components/analytics/export-panel';
+import { LessonDifficultyPanel } from '@/components/analytics/lesson-difficulty-panel';
 import { PracticeAnalyticsView } from '@/components/instructor/practice-analytics-view';
 import { SendReminderModal } from '@/components/instructor/send-reminder-modal';
 import { StudentDetailModal } from '@/components/instructor/student-detail-modal';
+import { analyticsApi } from '@/lib/analytics';
 import {
   ApiError,
   instructorAnalyticsApi,
@@ -226,11 +230,16 @@ export default function InstructorAnalyticsPage() {
         </p>
       </div>
 
-      {/* Phase 13 — two-tab view: student progress vs practice-lab analytics */}
+      {/* Phase 13 — two-tab view; Phase 15 added a third "Phân tích nâng cao"
+          tab for cohort / heatmap / difficulty / export features. The
+          progress tab itself also gains a Phase-15 section below the
+          DataTable (heatmap + lesson difficulty) so instructors don't
+          need to tab-switch just to see the most useful new widgets. */}
       <Tabs defaultValue="progress">
         <TabsList>
           <TabsTrigger value="progress">Tiến độ học viên</TabsTrigger>
           <TabsTrigger value="practice">Thực hành ảo</TabsTrigger>
+          <TabsTrigger value="advanced">Phân tích nâng cao</TabsTrigger>
         </TabsList>
 
         <TabsContent value="progress">
@@ -367,7 +376,69 @@ export default function InstructorAnalyticsPage() {
             ])}
           />
         </TabsContent>
+
+        <TabsContent value="advanced">
+          <AdvancedAnalyticsTab />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+// =====================================================
+// Phase 15 — "Phân tích nâng cao" tab
+// =====================================================
+function AdvancedAnalyticsTab() {
+  const accessToken = useAuthStore((s) => s.accessToken);
+
+  const heatmap = useQuery({
+    queryKey: ['analytics-heatmap'],
+    queryFn: () => analyticsApi.heatmap(accessToken!),
+    enabled: !!accessToken,
+  });
+  const difficulty = useQuery({
+    queryKey: ['analytics-lesson-difficulty'],
+    queryFn: () => analyticsApi.lessonDifficulty(accessToken!),
+    enabled: !!accessToken,
+  });
+  // Cohort is admin-only but frontend just surfaces the 403; instructors
+  // don't render it by default — we skip the query for INSTRUCTOR role.
+  // Render-wise, the card will show an empty state if the call 403s.
+
+  return (
+    <div className="space-y-6">
+      <section className="space-y-2">
+        <h2 className="text-base font-bold text-foreground">Hoạt động học tập theo ngày/giờ</h2>
+        <p className="text-xs text-muted">
+          Heatmap các khung giờ học viên tương tác với bài giảng của bạn trong 7 ngày qua.
+        </p>
+        <div className="rounded-card border border-border bg-surface p-4">
+          {heatmap.isLoading ? (
+            <div className="h-32 animate-pulse rounded bg-surface-2" />
+          ) : heatmap.data && heatmap.data.length > 0 ? (
+            <ActivityHeatmap cells={heatmap.data} />
+          ) : (
+            <p className="py-6 text-center text-sm text-muted">Chưa có dữ liệu hoạt động.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-base font-bold text-foreground">Bài học cần cải thiện</h2>
+        <p className="text-xs text-muted">
+          Top 10 bài có điểm trung bình thấp nhất — ưu tiên cập nhật nội dung hoặc làm lại quiz.
+        </p>
+        {difficulty.isLoading ? (
+          <div className="h-48 animate-pulse rounded-card bg-surface-2" />
+        ) : (
+          <LessonDifficultyPanel rows={difficulty.data ?? []} limit={10} />
+        )}
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-base font-bold text-foreground">Xuất báo cáo</h2>
+        <ExportPanel />
+      </section>
     </div>
   );
 }

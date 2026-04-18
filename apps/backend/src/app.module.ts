@@ -16,6 +16,7 @@ import { RolesGuard } from './common/rbac/roles.guard';
 import { RedisModule } from './common/redis/redis.module';
 import { StorageCoreModule } from './common/storage/storage.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { AnalyticsAdminModule } from './modules/analytics/analytics.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { CertificatesModule } from './modules/certificates/certificates.module';
@@ -30,6 +31,7 @@ import { LessonsModule } from './modules/lessons/lessons.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PracticeModule } from './modules/practice/practice.module';
 import { PracticeContentsModule } from './modules/practice-contents/practice-contents.module';
+import { ProgressModule } from './modules/progress/progress.module';
 import { QuestionsModule } from './modules/questions/questions.module';
 import { QuizAttemptsModule } from './modules/quiz-attempts/quiz-attempts.module';
 import { QuizzesModule } from './modules/quizzes/quizzes.module';
@@ -109,6 +111,9 @@ const monorepoRoot = join(__dirname, '..', '..', '..');
     QuizAttemptsModule,
     LessonNotesModule,
     DiscussionsModule,
+    // Phase 15 — Progress Tracking & Analytics
+    ProgressModule,
+    AnalyticsAdminModule,
   ],
   controllers: [AppController],
   providers: [
