@@ -89,58 +89,48 @@ export function AiChatWidget({ lessonId, suggestedQuestions = [] }: ChatWidgetPr
           if (frame.sessionId && !sessionId) setSessionId(frame.sessionId);
           if (frame.error) {
             setErrorCode(frame.error);
-            setTurns((prev) => {
-              const next = [...prev];
-              const last = next[next.length - 1];
-              if (last && last.streaming) {
-                last.streaming = false;
-                last.content = errorMessage(frame.error!);
-              }
-              return next;
-            });
+            setTurns((prev) =>
+              replaceLast(prev, (last) =>
+                last.streaming
+                  ? { ...last, streaming: false, content: errorMessage(frame.error!) }
+                  : last,
+              ),
+            );
             return;
           }
           if (frame.text) {
-            setTurns((prev) => {
-              const next = [...prev];
-              const last = next[next.length - 1];
-              if (last && last.role === 'model') {
-                last.content += frame.text ?? '';
-              }
-              return next;
-            });
+            // Immutable update — React StrictMode dev-mode double-invokes
+            // the setState callback, so mutating `last` in place would
+            // double-append each chunk. Clone the turn instead.
+            setTurns((prev) =>
+              replaceLast(prev, (last) =>
+                last.role === 'model'
+                  ? { ...last, content: last.content + (frame.text ?? '') }
+                  : last,
+              ),
+            );
           }
           if (frame.messageId) {
-            setTurns((prev) => {
-              const next = [...prev];
-              const last = next[next.length - 1];
-              if (last && last.role === 'model') {
-                last.id = frame.messageId;
-              }
-              return next;
-            });
+            setTurns((prev) =>
+              replaceLast(prev, (last) =>
+                last.role === 'model' ? { ...last, id: frame.messageId } : last,
+              ),
+            );
           }
           if (frame.done) {
-            setTurns((prev) => {
-              const next = [...prev];
-              const last = next[next.length - 1];
-              if (last) last.streaming = false;
-              return next;
-            });
+            setTurns((prev) => replaceLast(prev, (last) => ({ ...last, streaming: false })));
           }
         },
       });
     } catch (err) {
       toast.error((err as Error).message);
-      setTurns((prev) => {
-        const next = [...prev];
-        const last = next[next.length - 1];
-        if (last && last.streaming) {
-          last.streaming = false;
-          last.content = 'Lỗi kết nối tới trợ lý AI.';
-        }
-        return next;
-      });
+      setTurns((prev) =>
+        replaceLast(prev, (last) =>
+          last.streaming
+            ? { ...last, streaming: false, content: 'Lỗi kết nối tới trợ lý AI.' }
+            : last,
+        ),
+      );
     } finally {
       setIsStreaming(false);
       abortRef.current = null;
@@ -433,6 +423,20 @@ function TypingIndicator() {
       </span>
     </span>
   );
+}
+
+/**
+ * Immutable "update the last element" helper. Next.js 14 dev mode
+ * enables React StrictMode which double-invokes setState callbacks,
+ * so mutating the last turn in place would apply every chunk twice.
+ * This always returns a fresh object so the double-invocation is a
+ * no-op on the second run.
+ */
+function replaceLast(list: Turn[], update: (t: Turn) => Turn): Turn[] {
+  if (list.length === 0) return list;
+  const next = list.slice(0, -1);
+  next.push(update(list[list.length - 1]!));
+  return next;
 }
 
 function errorMessage(code: string): string {

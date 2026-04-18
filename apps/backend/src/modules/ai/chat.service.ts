@@ -21,6 +21,7 @@ interface LessonSnapshot {
   title: string;
   type: string;
   status: string | null;
+  overview: string | null;
 }
 
 /**
@@ -206,7 +207,16 @@ export class ChatService {
   private async loadLesson(lessonId: string, studentId: string): Promise<LessonSnapshot | null> {
     const lesson = await this.prisma.client.lesson.findUnique({
       where: { id: lessonId },
-      select: { id: true, title: true, type: true },
+      select: {
+        id: true,
+        title: true,
+        type: true,
+        // Pull the theory overview so the system prompt can tell Gemini
+        // what the lesson is about even without RAG / PDF indexing.
+        // Without this, the model only knew the title + type and would
+        // answer "Tôi không có thông tin cụ thể về bài học này".
+        theoryContent: { select: { overview: true } },
+      },
     });
     if (!lesson) return null;
     const progress = await this.prisma.client.lessonProgress.findUnique({
@@ -217,6 +227,7 @@ export class ChatService {
       id: lesson.id,
       title: lesson.title,
       type: lesson.type,
+      overview: lesson.theoryContent?.overview ?? null,
       status: progress?.status ?? null,
     };
   }
@@ -230,12 +241,14 @@ export class ChatService {
       'Bạn là trợ lý học tập AI của hệ thống GVD LMS, chuyên về đào tạo kỹ thuật công nghiệp tại Việt Nam.',
       student ? `Học viên: ${student.name}` : '',
       lesson ? `Bài học hiện tại: ${lesson.title} (${lesson.type})` : '',
+      lesson?.overview ? `Mô tả bài học: ${lesson.overview.slice(0, 800)}` : '',
       lesson?.status ? `Tiến độ bài học: ${lesson.status}` : '',
       ragContext ? `Tài liệu liên quan:\n${ragContext.slice(0, 4000)}` : '',
       'Nhiệm vụ: hỗ trợ giải thích khái niệm kỹ thuật, quy trình vận hành, an toàn lao động.',
       'Trả lời bằng Tiếng Việt, ngắn gọn, chính xác, dùng ví dụ thực tế công nghiệp khi phù hợp.',
       'Nếu câu hỏi liên quan đến an toàn lao động, hãy luôn nhắc người học tuân thủ quy tắc ATVSLĐ.',
       'Nếu không đủ thông tin để trả lời, thành thật nói không biết — đừng bịa.',
+      'Không lặp lại câu trả lời hoặc đoạn văn đã viết.',
     ];
     return lines.filter(Boolean).join('\n');
   }
