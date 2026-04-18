@@ -4,8 +4,7 @@ Cập nhật ngày: 18/04/2026
 
 ## ĐANG LÀM
 
-Phase 17 — AI Learning Assistant (Gemini + ChromaDB) ĐÃ XONG.
-Chuẩn bị Phase 18 (TBD).
+Phase 17 — AI Learning Assistant (Gemini)
 
 ## ĐÃ HOÀN THÀNH
 
@@ -124,66 +123,114 @@ Chuẩn bị Phase 18 (TBD).
   - Xoá placeholder Step 3 "Cài đặt" wizard
   - /student/dashboard stub (enrollments list)
   - seed-demo.ts script idempotent
+  - fix(storage): content/video thêm vào PUBLIC_PREFIXES
 - Commits: 41b1895 → 3f06d3b | Xong ngày: 17/04/2026
 
 ### ✅ Phase 14 — Student Dashboard & Learning Experience
 
-- Models mới: LessonNote, Discussion, DiscussionReply, StudentXP
-- Endpoints mới: quiz-attempts grading, lesson-notes, discussions, students/\* dashboard + streak + my-learning + progress + xp
-- Pages: /student/dashboard (full), /student/my-learning, /student/progress
+- Database: +4 models (LessonNote, Discussion, DiscussionReply, StudentXP)
+  migration 20260417101840
+- 15 endpoints mới:
+  - POST/GET /quiz-attempts (grading thật server-side)
+  - GET/PUT /lessons/:id/notes (DB sync)
+  - GET/POST /lessons/:id/discussions + replies + delete
+  - GET /students/dashboard + streak + my-learning + progress + xp
+  - GET /students/certificates + /students/certificates/:id
+  - GET /courses/:id/lessons (fix analytics lesson picker)
+  - GET /lessons/:id/mentionable (@mention dropdown)
+- Modules mới: quiz-attempts/ discussions/ lesson-notes/ students/
+- XP auto-award: +10 lesson · +20 quiz first pass · +100 course complete
+- +XP Trophy popup animation (CSS keyframe)
+- Pages mới: /student/my-learning + /student/progress + /student/certificates/:id/print
+- Pages mở rộng: /student/dashboard (6 rows đầy đủ)
+- Tabs mở rộng trong /student/lessons/[id]:
+  - Tab Ghi chú: localStorage → DB sync + offline fallback
+  - Tab Hỏi đáp: threads + replies + @mention + real-time Socket.io
+  - Quiz: grading thật thay auto-pass
+- Mobile: swipe prev/next (react-swipeable) + bottom nav 56px
+- PWA stub: /public/manifest.json + layout meta
+- 6 gaps đã đóng sau audit:
+  - Dashboard Row 6 Notifications
+  - Real-time discussions Socket.io
+  - Certificates gallery /student/progress Row 6
+  - @mention dropdown MentionComposer
+  - Mobile swipe gesture
+  - XP popup Trophy animation
+- 27 suites / 243 tests PASS | 29 routes build OK
+- Commits: b463156 → ec025e9 | Merge: 7efaa77
 - Xong ngày: 17/04/2026
 
 ### ✅ Phase 15 — Progress Tracking & Analytics
 
-- ProgressService: rollup CourseEnrollment.progressPercent + lastActiveAt
-- AtRiskService: 4 rules (SLOW_START/INACTIVE/LOW_SCORE/SAFETY_VIOLATION) + BullMQ CRON_QUEUE daily
-- Endpoints: /progress/_ + /analytics/_
+- Database: +progressPercent Int @default(0) + lastActiveAt DateTime vào CourseEnrollment
+  +hasCriticalViolation Boolean @default(false) vào PracticeAttempt
+  migration 20260418052800
+- Progress Module (4 endpoints):
+  - GET /progress/student/:id/courses
+  - GET /progress/student/:id/course/:cid
+  - GET /progress/course/:id/students
+  - GET /progress/analytics/at-risk?courseId=
+  - calculateCourseProgress engine (auto-trigger khi lesson COMPLETED)
+- Analytics Module (7 endpoints):
+  - GET /analytics/department/:id
+  - GET /analytics/cohort
+  - GET /analytics/system
+  - GET /analytics/lesson-difficulty
+  - GET /analytics/heatmap
+  - GET /analytics/export?type=&format=xlsx|pdf
+  - POST /analytics/schedule-report
+- At-risk detection 4 điều kiện:
+  - SLOW_START: progress <30% sau ≥7 ngày enrolled
+  - INACTIVE: lastActiveAt >5 ngày
+  - LOW_SCORE: avg quiz <50% sau ≥3 bài
+  - SAFETY_VIOLATION: practice có hasCriticalViolation=true
+  - Side effects: notification instructor + email học viên + AT_RISK_DETECTED audit
+- Frontend mới:
+  - activity-heatmap.tsx (7×24 GitHub-style + tooltip)
+  - cohort-chart.tsx (Recharts LineChart 6-color)
+  - lesson-difficulty-panel.tsx (đỏ/vàng/xanh threshold)
+  - export-panel.tsx (spinner + auto-download)
+- Pages mở rộng:
+  - /instructor/analytics → tab "Phân tích nâng cao"
+  - /admin/reports → tab "Phân tích hệ thống"
+- Post-verify fixes:
+  - avgScore clamp 0-100% (score/maxScore per attempt, mixed maxScore)
+  - failRate per-row percent đúng
+  - eslint import/internal-regex fix
+- At-risk test: 9/9 PASS (4 điều kiện + healthy + side effects + restore)
+- 30 suites / 272 tests PASS | 30 routes build OK
+- Commits: 0fc1582 → 4147b31 | Merge: b05da19
 - Xong ngày: 18/04/2026
 
 ### ✅ Phase 16 — Certificate System
 
-- CertificateCriteria per-course + auto-issue cascade
-- CertificatesService.checkAndIssueCertificate + issueManual + getDownloadUrl + verifyByCode
-- PDF generation (pdfmake) + MinIO CERTIFICATES prefix (public)
-- Public verify page /verify/[code]
-- Xong ngày: 18/04/2026
-
-### ✅ Phase 17 — AI Learning Assistant
-
-- Models mới: AiRecommendation, AiChatMessage, AiQuotaLog, AiSuggestedQuestions
-- Migration: 20260418120000_phase17_ai_assistant
-- Module AI: GeminiService + RagService + ChatService + RecommendationsService + WeeklyReportService + QuestionSuggestService + QuotaService + GeminiProcessor + AiScheduler
-- Queue mới: GEMINI_QUEUE (max 10 jobs/phút) — KHÔNG dùng cho chat (SSE direct)
-- SDK: @google/generative-ai (KHÔNG dùng langchain)
-- Models đã verify: gemini-2.5-flash (chat), gemini-flash-lite-latest (batch), text-embedding-004 (RAG)
-- Stack mới: chromadb container trong docker-compose.dev.yml (:8000) + pdf-parse (PDF → text)
-- Endpoints mới (7):
-  - POST /api/v1/ai/chat SSE stream
-  - GET /api/v1/ai/suggestions/:lessonId
-  - GET /api/v1/ai/recommendations
-  - PATCH /api/v1/ai/recommendations/:id/read
-  - POST /api/v1/ai/index-lesson INSTRUCTOR own/ADMIN+
-  - PATCH /api/v1/ai/chat/:messageId/rating
-  - GET /api/v1/ai/health ADMIN+
-- Cron tự đăng ký trong AiScheduler.onModuleInit:
-  - recommendations-daily @ 01:00 mỗi ngày
-  - weekly-report @ 08:00 thứ Hai
-- Frontend:
-  - components/ai/chat-widget.tsx — floating 380×520 (fullscreen mobile), SSE stream, typing indicator, thumbs rating, markdown + code syntax highlight
-  - components/ai/recommendation-cards.tsx — Row 7 trong /student/dashboard (ẩn khi rỗng)
-  - components/ai/suggested-questions.tsx — collapsible chips (embed trong chat-widget empty state)
-  - components/ai/ai-health-panel.tsx — tab "AI & Quota" trong /admin/settings
-- Deps mới:
-  - backend: @google/generative-ai, chromadb, pdf-parse, @types/pdf-parse
-  - frontend: react-markdown, react-syntax-highlighter, @types/react-syntax-highlighter
-- 8 unit tests mới: 34 suites, 319/319 PASS | 31 routes build OK
-- Gotcha đã xử lý:
-  - gemini-2.5-flash cần maxOutputTokens ≥ 1000 (thinking tokens ăn budget)
-  - SSE headers: Content-Type text/event-stream + X-Accel-Buffering: no
-  - RAG retrieve graceful khi Chroma offline → trả '' thay throw
-  - Rate recommendations/weekly fallback khi Gemini error → không throw
-  - QuestionSuggest cache 24h server-side (AiSuggestedQuestions)
-  - Score raw (Phase 15 contract) — recommendations đọc lt: 50 raw, không percent
+- Database: +CertificateCriteria model + grade/finalScore/pdfUrl vào Certificate
+  migration 20260418080730
+- 8 endpoints mới:
+  - GET/PUT/DELETE /certificates/criteria/:courseId
+  - POST /certificates/check/:courseId (auto-issue trigger)
+  - POST /certificates/issue-manual [ADMIN+]
+  - GET /certificates/:id/download (presigned PDF URL)
+  - GET /certificates/verify/:code [PUBLIC]
+  - Hook: lessons.completeForStudent → auto-issue
+- Auto-issue engine:
+  - 5 điều kiện: progress/score/practice/safety/requiredLessons
+  - Grade: Xuất sắc ≥90% | Giỏi ≥80% | Đạt ≥70%
+  - PDF pdfmake A4 landscape + QR code → MinIO certificates/
+  - Email template + notification + audit log
+- Phase 15 backlog wrapped:
+  - BullMQ repeat daily 8AM (CRON_QUEUE + cron.processor)
+  - SystemSetting persist subscribers (analytics.reportSubscribers)
+  - Mailpit Docker (SMTP :1025 | UI :8025)
+- Pages mới:
+  - /verify/[code] (PUBLIC SSR + SEO + LinkedIn share)
+  - /instructor/courses/:id/certificate (criteria config 6 sliders)
+- Pages mở rộng:
+  - /admin/certificates (download PDF + manual issue)
+  - /student/progress (cert gallery + LinkedIn share)
+- Verification: 290/290 unit + 26/26 integration + 18/18 regression PASS
+- 31 suites / 290 tests PASS | 31 routes build OK
+- Commits: 2eba9cb | Merge: 13cdc09
 - Xong ngày: 18/04/2026
 
 ## LƯU Ý QUAN TRỌNG
@@ -199,46 +246,37 @@ Chuẩn bị Phase 18 (TBD).
 - Hydration: layout dùng useHasHydrated() trước khi check role
 - TipTap body lưu JSON ProseMirror — auto-save 30s
 - KHÔNG dùng curl từ Git Bash Windows để POST tiếng Việt
-- Main branch đã merge đủ Phase 01-13 + session fixes (commit: 3f06d3b)
+- Main branch đã merge đủ Phase 01-16 (commit: 13cdc09)
 - Unity WebGL tên project "Builds":
   Builds.loader.js / Builds.data / Builds.framework.js / Builds.wasm
 - LMS Bridge: SendMessage('LMSBridge', 'ReceiveConfig', JSON.stringify(config))
 - GET /lessons/:id/context ĐÃ CÓ → sidebar outline + prev/next hoạt động
-- /student/dashboard ĐÃ CÓ stub cơ bản → Phase 14 mở rộng
+- content/video ĐÃ thêm PUBLIC_PREFIXES → video không cần presigned URL
 - Google OAuth ĐÃ CÓ: GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET trong .env
-- ceo.gvd@gmail.com đã là SUPER_ADMIN trong DB
-- 26 routes (thêm /student/dashboard so với Phase 13)
-
-## PHASE 14 — CẦN LÀM
-
-- Model mới cần migration:
-  - LessonNote (lessonId, studentId, content Json, updatedAt)
-  - Discussion (lessonId, authorId, content, isDeleted)
-  - DiscussionReply (discussionId, authorId, content, isDeleted)
-  - StudentXP (studentId unique, totalXP, level)
-- Endpoints mới:
-  - POST /quiz-attempts (quiz grading backend thật, thay auto-pass)
-  - GET /quiz-attempts/:quizId (lịch sử làm bài)
-  - GET/PUT /lessons/:id/notes (ghi chú lên DB, thay localStorage)
-  - GET/POST /lessons/:id/discussions (hỏi đáp)
-  - POST /discussions/:id/replies
-  - GET /students/dashboard (data tổng hợp)
-  - GET /students/streak (streak + heatmap)
-  - GET /students/my-learning (cây học tập)
-  - GET /students/progress (charts data)
-  - GET /students/xp (XP + level)
-  - GET /courses/:id/lessons (fix analytics lesson picker Phase 13)
-- Pages mới/mở rộng:
-  - /student/dashboard (mở rộng stub đã có)
-  - /student/my-learning (mới)
-  - /student/progress (mới)
-  - Tab Hỏi đáp trong /student/lessons/[id]
-  - Nâng cấp Tab Ghi chú lên DB sync
-  - Fix Quiz grading thật (thay auto-pass)
-- PWA stub: manifest.json + meta tags
-- XP: +10 complete lesson, +20 pass quiz lần đầu, +100 complete course
+- ceo.gvd@gmail.com = SUPER_ADMIN trong DB
+- Quiz grading thật từ Phase 14 (KHÔNG còn auto-pass)
+- 10 câu hỏi ATVSLĐ đã import vào ngân hàng + gắn quiz "Bài 1: PPE cơ bản"
+- lessonId "Bài 1: PPE cơ bản": cmnzujyxm000aepnnolixisst
+- avgScore trong analytics đã scale 0-100% (clamp per attempt)
+- Audit log endpoint: /api/v1/admin/audit-logs (có chữ s)
+- At-risk test script: node scripts/phase15-seed-at-risk.js [slow|inactive|low|safety|all|restore]
+- Mailpit: SMTP localhost:1025 | UI http://localhost:8025
+- /verify/:code là PUBLIC page (không cần auth)
+- Auto-issue cert: trigger sau lesson complete + quiz pass + practice pass
+- Grade: Xuất sắc ≥90% | Giỏi ≥80% | Đạt ≥70%
+- BullMQ cron at-risk-daily: pattern 0 8 \* \* \* (đã active)
+- Certificate PDF: certificates/{certId}.pdf trong MinIO
+- GEMINI_API_KEY đã có trong .env | Model: gemini-2.5-flash
+- GEMINI_MODEL=gemini-2.5-flash (gemini-2.0-flash không có free quota)
+- Phase 17: ChromaDB cần thêm vào docker-compose.dev.yml
+- Phase 17: RAG chatbot dùng lesson content + PDF attachments làm context
+- Phase 17: Rate limit protection qua BullMQ queue (free tier 1500 req/ngày)
+- 31 routes hiện tại
 
 ## LỆNH ĐÃ VERIFY
 
-pnpm --filter @lms/backend test # 23 suites, 221 tests PASS
-pnpm --filter @lms/frontend build # 26 routes built
+```bash
+pnpm --filter @lms/backend test        # 31 suites, 290 tests PASS
+pnpm --filter @lms/frontend build      # 31 routes built
+pnpm --filter @lms/database exec tsx prisma/seed-demo.ts  # seed demo data
+```

@@ -2,23 +2,32 @@
 
 ## Tổng quan dự án
 
-Hệ thống LMS thế hệ mới tích hợp AI, chuyên đào tạo thực hành kỹ thuật công nghiệp.
-Mục tiêu: 68% scope (bỏ qua WebGL 3D Unity — chỉ làm LMS Bridge scaffold + scoring).
+Hệ thống LMS thế hệ mới tích hợp AI, chuyên đào tạo thực hành kỹ thuật công nghiệp tại Việt Nam.
+
+Tính năng cốt lõi đã hoàn thành:
+
+- Đào tạo lý thuyết: Video / SCORM / xAPI / PowerPoint
+- Thực hành ảo: Unity WebGL 3D tích hợp LMS Bridge đầy đủ (KHÔNG phải scaffold)
+- Đánh giá: Quiz server-side + Practice scoring engine (13 rules)
+- Theo dõi tiến độ: Student Dashboard + Analytics + At-risk detection
+- Gamification: XP system + streak + leaderboard
+- Hỏi đáp: Threaded comments + @mention + real-time Socket.io
+- Chứng chỉ: Tự động cấp + QR verify (Phase 16)
+- AI Assistant: Gemini chatbot RAG (Phase 17)
+- Deploy production: Docker + CI/CD + Monitoring (Phase 18)
 
 ## Monorepo Structure
 
-```
 lms-platform/
 ├── apps/
-│   ├── backend/      # NestJS + TypeScript
-│   └── frontend/     # Next.js 14 App Router + TypeScript
+│ ├── backend/ # NestJS + TypeScript
+│ └── frontend/ # Next.js 14 App Router + TypeScript
 ├── packages/
-│   ├── database/     # Prisma schema + migrations
-│   ├── ui/           # Shared component library (shadcn/ui base)
-│   ├── types/        # Shared TypeScript types — ĐỌC TRƯỚC KHI TẠO TYPE MỚI
-│   └── config/       # ESLint, TS, Tailwind shared config
+│ ├── database/ # Prisma schema + migrations
+│ ├── ui/ # Shared component library (shadcn/ui base)
+│ ├── types/ # Shared TypeScript types — ĐỌC TRƯỚC KHI TẠO TYPE MỚI
+│ └── config/ # ESLint, TS, Tailwind shared config
 └── docker/
-```
 
 ## Tech Stack — KHÔNG THAY ĐỔI
 
@@ -27,7 +36,7 @@ lms-platform/
 - **Auth**: JWT (access 15min / refresh 7d) + Google OAuth2 + 2FA email OTP
 - **Storage**: MinIO (S3-compatible)
 - **Email**: Nodemailer + BullMQ queue
-- **AI**: Google Gemini API (gemini-2.0-flash free tier) + ChromaDB
+- **AI**: Google Gemini API (gemini-2.5-flash free tier) + ChromaDB
 - **State**: Zustand (client) + TanStack Query (server)
 - **Animation**: Framer Motion
 
@@ -42,13 +51,10 @@ lms-platform/
 
 ## 4 Luật Bất Khả Xâm Phạm — ENFORCE Ở MỌI NƠI
 
-```
 LUẬT 1: Chỉ SUPER_ADMIN gọi được createAdmin · deleteAdmin · updateAdminRole
 LUẬT 2: ADMIN cố sửa/xoá SUPER_ADMIN hoặc ADMIN khác → 403
 LUẬT 3: Bất kỳ ai tự xoá chính mình → 403
 LUẬT 4: count(SUPER_ADMIN) ≤ 1 + target là SUPER_ADMIN → 403
-```
-
 Backend: middleware `checkAdminRules()` bắt buộc trước mọi admin action.
 Frontend: disable button + tooltip giải thích (không ẩn button).
 
@@ -83,9 +89,15 @@ Tất cả shared types ở `packages/types/src/`:
 - `assessment.types.ts` — Quiz, Question, Certificate
 - Import: `import type { User, Role } from '@lms/types'`
 
+## Tài Khoản Test
+
+- SUPER_ADMIN: admin@lms.local / Admin@123456
+- SUPER_ADMIN (Google): ceo.gvd@gmail.com (role đã set trong DB)
+- INSTRUCTOR: instructor@lms.local / Instructor@123456
+- STUDENT: student@lms.local / Student@123456
+
 ## Environment Variables (xem .env.example)
 
-```
 DATABASE_URL, REDIS_URL, JWT_SECRET, REFRESH_TOKEN_SECRET
 GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 SMTP_HOST, SMTP_USER, SMTP_PASS
@@ -93,16 +105,48 @@ MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY
 GEMINI_API_KEY
 CHROMA_HOST, CHROMA_PORT
 NEXT_PUBLIC_API_URL, ALLOWED_ORIGINS
+
+## Storage — PUBLIC_PREFIXES
+
+Các prefix sau serve trực tiếp từ MinIO (không cần presigned URL):
+
+- content/webgl
+- content/scorm
+- content/video
+
+File: `apps/backend/src/storage/storage.constants.ts`
+Khi thêm loại content mới → thêm prefix vào đây.
+
+## Unity WebGL Convention
+
+- Tên project thực tế: "Builds"
+- Files: Builds.loader.js / Builds.data / Builds.framework.js / Builds.wasm
+- LMS → Unity: `unityInstance.SendMessage('LMSBridge', 'ReceiveConfig', JSON.stringify(config))`
+- Unity → LMS: `window.parent.postMessage({ type: 'LMS_ACTION', payload }, '*')`
+- SCORM proxy: Next.js rewrite `/scorm-content/*` → MinIO (tránh cross-origin)
+- WebGL extract: stream thẳng lên MinIO (không extract ra disk — tránh Windows race condition)
+- Scoring engine: isInOrder ×1.10 | critical violation −20% | mandatory skip = 0 | clamp ≥ 0
+
+## Seed Data
+
+```bash
+# Seed SUPER_ADMIN (chỉ lần đầu)
+pnpm --filter @lms/database db:seed
+
+# Seed demo đầy đủ (idempotent — chạy nhiều lần không bị lỗi)
+pnpm --filter @lms/database exec tsx prisma/seed-demo.ts
+# Tạo: instructor + student + course PPE + chapters + lessons + quiz + enrollment
 ```
 
 ## Lệnh Thường Dùng
 
 ```bash
-pnpm dev                          # chạy cả backend + frontend
-pnpm --filter @lms/backend test   # test backend
-pnpm --filter @lms/frontend lint  # lint frontend
-pnpm db:migrate                   # chạy migration mới
-pnpm db:studio                    # mở Prisma Studio
+pnpm dev                                    # chạy cả backend + frontend
+pnpm --filter @lms/backend test             # test backend
+pnpm --filter @lms/frontend build           # build frontend
+pnpm --filter @lms/frontend lint            # lint frontend
+pnpm --filter @lms/database db:migrate      # chạy migration mới
+pnpm --filter @lms/database db:studio       # mở Prisma Studio
 ```
 
 ## Phase Hiện Tại
@@ -116,153 +160,152 @@ pnpm db:studio                    # mở Prisma Studio
 3. Không tạo file ngoài cấu trúc monorepo đã định nghĩa
 4. Test file đặt cạnh source: `auth.service.spec.ts`
 5. Mỗi NestJS module phải có: module, controller, service, dto, spec
-6. Mỗi Next.js page phải có: loading.tsx, error.tsx, không-có-data state
-
----
+6. Mỗi Next.js page phải có: loading.tsx, error.tsx, empty state
 
 ## ⚠️ Files TUYỆT ĐỐI KHÔNG Commit
 
-- `.env`
-- `docker/docker-compose.override.yml`
-- `*.local`
-- `apps/frontend/.env.local`
-
----
+- `.env` — chứa secrets (DB password, JWT keys, API keys)
+- `docker/docker-compose.override.yml` — cấu hình riêng từng máy
+- `*.local` và `apps/frontend/.env.local` — cấu hình local
+- `.claude/` — internal tooling của Claude Code
 
 ## Frontend Route Groups — CẤU TRÚC BẮT BUỘC
 
 apps/frontend/src/app/
-├── (auth)/ → login, register, 2fa, verify-email
-├── (admin)/ → /admin/dashboard, users, content...
-├── (instructor)/ → /instructor/dashboard, courses, lessons...
-├── (student)/ → /student/dashboard, lessons, progress...
-└── (dashboard)/ → /dashboard (shared)
-
+├── (auth)/ → login, register, 2fa, verify-email, callback
+├── (admin)/ → /admin/dashboard, users, content, curriculum...
+├── (instructor)/ → /instructor/dashboard, courses, lessons, analytics...
+├── (student)/ → /student/dashboard, lessons, my-learning, progress...
+└── (dashboard)/ → /dashboard (shared after login)
 KHÔNG tạo page ngoài route groups này!
-
----
 
 ## Khởi Động Môi Trường Dev
 
+```bash
 # Bước 1: Khởi động Docker
-
 docker compose -f docker/docker-compose.dev.yml \
- -f docker/docker-compose.override.yml up -d
+  -f docker/docker-compose.override.yml up -d
 
 # Bước 2: Chạy app
-
 pnpm dev
 
-# Seed SUPER_ADMIN (chỉ lần đầu)
-
-pnpm --filter @lms/database db:seed
-
----
+# Xác nhận:
+# Backend:  http://localhost:4000/api/v1/health → {"status":"ok"}
+# Frontend: http://localhost:3000/login → load được
+```
 
 ## Sau Khi Sửa Packages — Build Bắt Buộc
 
-pnpm --filter @lms/types build # khi sửa packages/types
-pnpm --filter @lms/database generate # khi sửa packages/database
-pnpm --filter @lms/ui build # khi sửa packages/ui
-
----
+```bash
+pnpm --filter @lms/types build        # khi sửa packages/types
+pnpm --filter @lms/database generate  # khi sửa packages/database
+pnpm --filter @lms/ui build           # khi sửa packages/ui
+```
 
 ## Lưu Ý Kỹ Thuật Bắt Buộc
 
-- Docker PostgreSQL port: 5433 (KHÔNG phải 5432)
-- Backend hot reload: ts-node-dev (KHÔNG dùng tsx)
-- API prefix: /api/v1/ (KHÔNG phải /api/)
-- Layout: dùng useHasHydrated() tránh hydration mismatch
+- Docker PostgreSQL port: **5433** (KHÔNG phải 5432)
+- Backend hot reload: **ts-node-dev** (KHÔNG dùng tsx)
+- API prefix: **/api/v1/** (KHÔNG phải /api/)
+- Layout: dùng `useHasHydrated()` tránh hydration mismatch
 - TipTap content: lưu JSON ProseMirror (không phải HTML string)
-- Mỗi NestJS module phải có: module, controller, service, dto, spec
-- Mỗi Next.js page phải có: loading.tsx, error.tsx, empty state
-
----
+- SCORM iframe: serve qua proxy `/scorm-content/*` (không trực tiếp MinIO)
+- Quiz grading: server-side tại POST /quiz-attempts (KHÔNG auto-pass)
+- Google OAuth callback path: `/callback` (không phải `/auth/callback`)
+- Presigned URL video expires 1h → dùng PUBLIC_PREFIXES thay thế
+- Unity WebGL build tên project "Builds" → verify Builds.loader.js khi upload
+- Student sidebar menu "Sắp có": Khoá học / Bài giảng / Tiến độ / Cài đặt
 
 ## Cảnh Báo Encoding UTF-8
 
 - KHÔNG dùng curl từ Git Bash Windows để POST data tiếng Việt
 - Dùng Node.js script hoặc UI browser để tạo data tiếng Việt
-- Seed data: pnpm --filter @lms/database db:seed
-
----
+- Kiểm tra encoding trước khi seed: dùng `seed-demo.ts` thay vì curl
 
 ## Thư Viện Đã Cài Sẵn — KHÔNG Cài Lại
 
-Backend:
+**Backend:**
 
 - pdfmake + exceljs → xuất PDF/Excel
 - SheetJS/xlsx → import Excel
-- BullMQ → queue jobs
+- BullMQ → queue jobs + scheduled repeat jobs
 - Socket.io → realtime notification
+- scorm-again → SCORM LRS
+- unzipper + xml2js → parse SCORM/WebGL zip
 
-Frontend:
+**Frontend:**
 
 - dnd-kit → drag & drop
-- TipTap → rich text editor
-- Recharts → charts
+- TipTap → rich text editor (7 packages đã cài)
+- Recharts → charts + responsive container
 - Framer Motion → animation
-- react-pdf → PDF viewer (Phase 12+)
-- scorm-again → SCORM player (Phase 12+)
-
----
+- react-pdf → PDF viewer
+- scorm-again → SCORM player (từ public/ static)
+- react-swipeable → swipe gesture
 
 ## Kiểm Tra Trước Khi Tạo Module/Page Mới
 
+```bash
 # Kiểm tra backend module đã tồn tại chưa
-
 ls apps/backend/src/modules/
 
 # Kiểm tra frontend page đã tồn tại chưa
-
 ls apps/frontend/src/app/(instructor)/instructor/
 ls apps/frontend/src/app/(admin)/admin/
 ls apps/frontend/src/app/(student)/student/
+```
 
-Nếu đã có → MỞ RỘNG, KHÔNG tạo mới!
-
----
+Nếu đã có → **MỞ RỘNG, KHÔNG tạo mới!**
 
 ## Quy Trình Bắt Buộc Trước Khi Bắt Đầu Phase Mới
 
-1. Kiểm tra main branch có đủ code phase trước:
-   git log --oneline main | head -5
-   ls apps/backend/src/modules/
+1. Đọc CONTEXT.md + CLAUDE.md trước
+2. Kiểm tra main branch có đủ code phase trước:
 
-2. Nếu main THIẾU code phase trước → DỪNG NGAY, báo user:
+```bash
+git log --oneline main | head -5
+ls apps/backend/src/modules/
+```
+
+3. Nếu main THIẾU code phase trước → DỪNG NGAY, báo user:
    "Main branch chưa có code Phase XX. Cần merge trước khi tiếp tục."
-
-3. Chỉ bắt đầu làm khi main đã đầy đủ.
-
----
+4. Chỉ bắt đầu làm khi main đã đầy đủ.
 
 ## Quy Trình Bắt Buộc Sau Khi Hoàn Thành Phase
 
 ### Bước 1 — Test + Build
 
-pnpm --filter @lms/backend test # phải 100% PASS
-pnpm --filter @lms/frontend build # phải build thành công
+```bash
+pnpm --filter @lms/backend test        # phải 100% PASS
+pnpm --filter @lms/frontend build      # phải build thành công
+```
 
 ### Bước 2 — Commit vào worktree hiện tại
 
+```bash
 git add -A
+# KHÔNG commit: .env | docker-compose.override.yml | .claude/
 git commit -m "feat(scope): phase XX - mô tả ngắn"
+```
 
 ### Bước 3 — Nhắc user merge về main (BẮT BUỘC)
 
-Thông báo user chạy lệnh sau tại C:\GVD-lms-platform:
+Thông báo user chạy lệnh sau tại `C:\GVD-lms-platform`:
 
+```bash
 git checkout main
 git merge claude/{tên-branch-hiện-tại} --no-ff \
- -m "feat(scope): phase XX complete"
+  -m "feat(scope): phase XX complete"
 git checkout -
+```
 
-KHÔNG bắt đầu phase mới trước khi user xác nhận merge xong!
+**KHÔNG bắt đầu phase mới trước khi user xác nhận merge xong!**
 
 ### Bước 4 — Báo cáo đầy đủ cho user
 
 - Commit hash trên worktree
 - Danh sách endpoints mới (method + path + role)
 - Danh sách pages mới (route + mô tả)
+- Số tests PASS + số routes build OK
 - Hướng dẫn test thủ công từng tính năng
 - Nhắc user: "Vui lòng cập nhật CONTEXT.md trước khi bắt đầu Phase tiếp theo"

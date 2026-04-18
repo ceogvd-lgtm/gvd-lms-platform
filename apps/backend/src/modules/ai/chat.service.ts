@@ -111,7 +111,11 @@ export class ChatService {
         role: m.role,
         parts: [{ text: m.content }],
       })),
-      systemInstruction: systemPrompt,
+      // Gemini REST expects systemInstruction as a Content object, not a
+      // raw string — passing a string yields `400 Invalid value at
+      // 'system_instruction'`. Wrap as `{ role, parts }` so the SDK
+      // serialises it correctly.
+      systemInstruction: { role: 'system', parts: [{ text: systemPrompt }] },
     });
 
     let fullResponse = '';
