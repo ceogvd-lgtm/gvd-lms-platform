@@ -70,6 +70,28 @@ services:
       exit 0;
       "
 
+  # Phase 17 — ChromaDB for vector embeddings (RAG over lesson PDFs).
+  # Gemini text-embedding-004 produces 768-dim vectors which ChromaDB
+  # stores + indexes for similarity search. Anonymized telemetry is off
+  # so local dev doesn't phone home. Data lives in a named volume so it
+  # survives `docker compose down` but can be wiped with `docker volume
+  # rm lms_chroma_data` if the embeddings drift from the source docs.
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: lms-chromadb-dev
+    restart: unless-stopped
+    ports:
+      - '8000:8000'
+    volumes:
+      - lms_chroma_data:/chroma/chroma
+    environment:
+      ANONYMIZED_TELEMETRY: 'false'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8000/api/v2/heartbeat']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
   # Phase 16 — Mailpit for catching outbound email in local dev.
   # SMTP lands on :1025, the UI on http://localhost:8025. Configure
   # .env with SMTP_HOST=localhost SMTP_PORT=1025 (no auth needed) and
@@ -97,3 +119,4 @@ volumes:
   lms_postgres_data:
   lms_redis_data:
   lms_minio_data:
+  lms_chroma_data:

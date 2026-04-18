@@ -10,6 +10,10 @@ export const EMAIL_QUEUE = 'email';
 // email processor doesn't need to branch on job name, and the cron
 // schedule is easy to inspect in BullMQ dashboards.
 export const CRON_QUEUE = 'cron';
+// Phase 17 — Gemini batch queue lives in the AI module
+// (see `modules/ai/ai.constants.GEMINI_QUEUE`). We keep it out of this
+// global registration so the BullMQ `limiter` + `concurrency` config
+// stays co-located with the worker that consumes it.
 
 /**
  * Global BullMQ wiring — shares the REDIS_URL used by Phase 03 Redis service.
