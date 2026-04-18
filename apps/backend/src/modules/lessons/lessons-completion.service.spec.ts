@@ -5,6 +5,7 @@ import { Test } from '@nestjs/testing';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { ProgressService } from '../progress/progress.service';
 import { XpService } from '../students/xp.service';
 
 import { LessonsService } from './lessons.service';
@@ -54,6 +55,17 @@ describe('LessonsService — completeForStudent', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { log: jest.fn() } },
         { provide: XpService, useValue: { award: jest.fn().mockResolvedValue(undefined) } },
+        // Phase 15 — completeForStudent now recalculates CourseEnrollment
+        // rollup after the transition. Tests don't care about the side-
+        // effect, so we stub with a no-op.
+        {
+          provide: ProgressService,
+          useValue: {
+            calculateCourseProgress: jest
+              .fn()
+              .mockResolvedValue({ progressPercent: 0, completed: false }),
+          },
+        },
       ],
     }).compile();
     service = mod.get(LessonsService);
