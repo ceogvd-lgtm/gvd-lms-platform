@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { StorageService } from '../../common/storage/storage.service';
 
 import { SubjectsService } from './subjects.service';
 
@@ -28,6 +29,7 @@ describe('SubjectsService', () => {
     };
   };
   let audit: { log: jest.Mock };
+  let storage: { delete: jest.Mock };
 
   const actor = { id: 'admin1', ip: '127.0.0.1' };
 
@@ -42,12 +44,14 @@ describe('SubjectsService', () => {
       },
     };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
+    storage = { delete: jest.fn().mockResolvedValue(undefined) };
 
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         SubjectsService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: audit },
+        { provide: StorageService, useValue: storage },
       ],
     }).compile();
     service = mod.get(SubjectsService);
@@ -118,6 +122,55 @@ describe('SubjectsService', () => {
     it('throw 404 khi subject không tồn tại', async () => {
       prisma.client.subject.findUnique.mockResolvedValue(null);
       await expect(service.remove('ghost', actor)).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('gọi storage.delete với key MinIO tách từ thumbnail URL', async () => {
+      prisma.client.subject.findUnique.mockResolvedValue({
+        id: 'subj-1',
+        name: 'X',
+        code: 'X1',
+        isDeleted: false,
+        thumbnailUrl: '/minio/thumbnails/x.webp',
+        _count: { courses: 0 },
+      });
+      prisma.client.subject.update.mockResolvedValue({});
+
+      await service.remove('subj-1', actor);
+
+      expect(storage.delete).toHaveBeenCalledWith('thumbnails/x.webp');
+    });
+
+    it('KHÔNG throw khi storage.delete fail — flow vẫn hoàn tất', async () => {
+      prisma.client.subject.findUnique.mockResolvedValue({
+        id: 'subj-1',
+        name: 'X',
+        code: 'X1',
+        isDeleted: false,
+        thumbnailUrl: '/minio/thumbnails/x.webp',
+        _count: { courses: 0 },
+      });
+      prisma.client.subject.update.mockResolvedValue({});
+      storage.delete.mockRejectedValue(new Error('MinIO down'));
+
+      await expect(service.remove('subj-1', actor)).resolves.toEqual({
+        message: 'Đã xoá môn học',
+      });
+    });
+
+    it('bỏ qua cleanup nếu thumbnailUrl null', async () => {
+      prisma.client.subject.findUnique.mockResolvedValue({
+        id: 'subj-1',
+        name: 'X',
+        code: 'X1',
+        isDeleted: false,
+        thumbnailUrl: null,
+        _count: { courses: 0 },
+      });
+      prisma.client.subject.update.mockResolvedValue({});
+
+      await service.remove('subj-1', actor);
+
+      expect(storage.delete).not.toHaveBeenCalled();
     });
 
     it('ghi AuditLog với action SUBJECT_DELETED + oldValue', async () => {

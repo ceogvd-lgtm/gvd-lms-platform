@@ -5,6 +5,7 @@ import { PrismaModule } from '../../common/prisma/prisma.module';
 import { CRON_QUEUE } from '../../common/queue/queue.module';
 import { ProgressModule } from '../progress/progress.module';
 import { ReportsModule } from '../reports/reports.module';
+import { StorageCleanupModule } from '../storage-cleanup/storage-cleanup.module';
 
 import { AnalyticsController } from './analytics.controller';
 import { AnalyticsService } from './analytics.service';
@@ -27,6 +28,9 @@ import { ScheduledReportsService } from './scheduled-reports.service';
     PrismaModule,
     ProgressModule,
     ReportsModule,
+    // Phase 18 — CronProcessor dispatches storage-cleanup-weekly jobs
+    // to StorageCleanupService, so pull it in here.
+    StorageCleanupModule,
     BullModule.registerQueue({ name: CRON_QUEUE }),
   ],
   controllers: [AnalyticsController],

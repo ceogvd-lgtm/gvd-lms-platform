@@ -4,11 +4,14 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { StorageService } from '../../common/storage/storage.service';
+import { extractMinioKey } from '../../common/storage/storage.utils';
 
 import type { CreateCourseDto } from './dto/create-course.dto';
 import type { ListCoursesDto } from './dto/list-courses.dto';
@@ -34,9 +37,12 @@ export interface Paginated<T> {
 
 @Injectable()
 export class CoursesService {
+  private readonly logger = new Logger(CoursesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly storage: StorageService,
   ) {}
 
   // =====================================================
@@ -408,7 +414,23 @@ export class CoursesService {
       oldValue: { title: course.title, status: course.status },
     });
 
+    // Option A — xoá thumbnail mồ côi. Best-effort: không throw dù fail,
+    // cron weekly (Option B) sẽ quét orphan còn sót lại.
+    await this.cleanupFile(course.thumbnailUrl, `course ${id} thumbnail`);
+
     return { message: 'Đã xoá khoá học' };
+  }
+
+  private async cleanupFile(url: string | null | undefined, label: string): Promise<void> {
+    const key = extractMinioKey(url);
+    if (!key) return;
+    try {
+      await this.storage.delete(key);
+    } catch (err) {
+      this.logger.warn(
+        `Storage cleanup failed for ${label} (key=${key}): ${(err as Error).message}`,
+      );
+    }
   }
 
   // =====================================================

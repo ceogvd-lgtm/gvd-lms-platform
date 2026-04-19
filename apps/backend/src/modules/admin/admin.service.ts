@@ -1,11 +1,13 @@
 import { Role } from '@lms/types';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import ExcelJS from 'exceljs';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AdminRulesService } from '../../common/rbac/admin-rules.service';
+import { StorageService } from '../../common/storage/storage.service';
+import { extractMinioKey } from '../../common/storage/storage.utils';
 
 import { BlockUserDto } from './dto/block-user.dto';
 import { BulkBlockDto } from './dto/bulk-block.dto';
@@ -47,10 +49,14 @@ const USER_SAFE_SELECT = {
 
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly rules: AdminRulesService,
     private readonly audit: AuditService,
+    // Phase 18 — cleanup avatar file sau khi hard-delete user.
+    private readonly storage: StorageService,
   ) {}
 
   // =====================================================
@@ -239,6 +245,19 @@ export class AdminService {
       ipAddress: meta.ip,
       oldValue: { email: before.email, role: before.role },
     });
+
+    // Phase 18 — cleanup avatar mồ côi khỏi MinIO. Không throw dù fail;
+    // orphan file sẽ bị cron weekly quét.
+    const avatarKey = extractMinioKey(before.avatar);
+    if (avatarKey) {
+      try {
+        await this.storage.delete(avatarKey);
+      } catch (err) {
+        this.logger.warn(
+          `Storage cleanup failed for deleted user ${target.id} avatar (key=${avatarKey}): ${(err as Error).message}`,
+        );
+      }
+    }
 
     return { message: 'Đã xoá người dùng' };
   }

@@ -6,6 +6,7 @@ import { Test } from '@nestjs/testing';
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AdminRulesService } from '../../common/rbac/admin-rules.service';
+import { StorageService } from '../../common/storage/storage.service';
 
 import { AdminService } from './admin.service';
 
@@ -65,6 +66,8 @@ describe('AdminService — Phase 09 extensions', () => {
         { provide: PrismaService, useValue: prismaMock },
         { provide: AdminRulesService, useValue: rulesMock },
         { provide: AuditService, useValue: auditMock },
+        // Phase 18 — AdminService.deleteUser cleans up avatar in MinIO.
+        { provide: StorageService, useValue: { delete: jest.fn() } },
       ],
     }).compile();
 

@@ -39,6 +39,7 @@ import { QuizzesModule } from './modules/quizzes/quizzes.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ScormModule } from './modules/scorm/scorm.module';
 import { StorageModule } from './modules/storage/storage.module';
+import { StorageCleanupModule } from './modules/storage-cleanup/storage-cleanup.module';
 import { StudentsModule } from './modules/students/students.module';
 import { SubjectsModule } from './modules/subjects/subjects.module';
 import { SystemSettingsModule } from './modules/system-settings/system-settings.module';
@@ -119,6 +120,8 @@ const monorepoRoot = join(__dirname, '..', '..', '..');
     AnalyticsAdminModule,
     // Phase 17 — AI Learning Assistant (Gemini + ChromaDB RAG)
     AiModule,
+    // Phase 18 — MinIO orphan file cleanup (weekly cron + manual trigger)
+    StorageCleanupModule,
   ],
   controllers: [AppController],
   providers: [

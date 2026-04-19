@@ -5,6 +5,7 @@ import { Test } from '@nestjs/testing';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { StorageService } from '../../common/storage/storage.service';
 import { CertificatesService } from '../certificates/certificates.service';
 import { ProgressService } from '../progress/progress.service';
 import { XpService } from '../students/xp.service';
@@ -76,6 +77,13 @@ describe('LessonsService — completeForStudent', () => {
               .fn()
               .mockResolvedValue({ issued: false, reason: 'stub' }),
           },
+        },
+        // Phase 18 — LessonsService.softDelete cleans up MinIO files.
+        // This spec chỉ test completeForStudent (không đụng softDelete)
+        // nên stub no-op là đủ.
+        {
+          provide: StorageService,
+          useValue: { delete: jest.fn(), deletePrefix: jest.fn() },
         },
       ],
     }).compile();
