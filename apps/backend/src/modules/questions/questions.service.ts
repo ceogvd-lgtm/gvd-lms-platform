@@ -9,10 +9,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
+import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { ImportQuestionsDto } from './dto/import-questions.dto';
+import { ListAdminQuestionsDto } from './dto/list-admin-questions.dto';
 import { ListQuestionsDto } from './dto/list-questions.dto';
 import { QuestionOptionDto } from './dto/question-option.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
@@ -37,7 +39,13 @@ export interface ImportResult {
 
 @Injectable()
 export class QuestionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // Phase 18 — admin bulk-delete cần audit log theo CLAUDE.md.
+    // Dùng optional inject? Không — AuditService luôn có sẵn vì AuditModule
+    // đã import vào AppModule global.
+    private readonly audit: AuditService,
+  ) {}
 
   // =====================================================
   // Helpers
@@ -288,6 +296,136 @@ export class QuestionsService {
       page,
       limit,
       totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
+  // =====================================================
+  // LIST for ADMIN (paginated + filter) — Phase 18
+  // =====================================================
+
+  /**
+   * Admin-scoped listing: sees tất cả câu hỏi mọi instructor + filter mới
+   * (`instructorId`, `subjectId`). Controller class-level `@Roles(ADMIN+)`
+   * đã chặn non-admin; service này vẫn double-check để defense-in-depth.
+   *
+   * Khác `list()` thường:
+   *   - Không override `createdBy` theo actor → admin thấy toàn bộ
+   *   - Thêm filter `instructorId` (tên trực quan hơn `createdBy`)
+   *   - Thêm filter `subjectId` (join qua `course.subjectId`)
+   */
+  async listForAdmin(actor: Actor, query: ListAdminQuestionsDto) {
+    if (actor.role !== Role.ADMIN && actor.role !== Role.SUPER_ADMIN) {
+      throw new ForbiddenException('Chỉ admin mới xem được ngân hàng câu hỏi tổng hợp');
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const where: Prisma.QuestionBankWhereInput = {};
+
+    if (query.q) where.question = { contains: query.q, mode: 'insensitive' };
+    if (query.type) where.type = query.type;
+    if (query.difficulty) where.difficulty = query.difficulty;
+    if (query.courseId) where.courseId = query.courseId;
+    if (query.departmentId) where.departmentId = query.departmentId;
+    if (query.instructorId) where.createdBy = query.instructorId;
+    if (query.subjectId) {
+      // question → course → subjectId (nested relation filter)
+      where.course = { subjectId: query.subjectId };
+    }
+
+    const [rows, total] = await Promise.all([
+      this.prisma.client.questionBank.findMany({
+        where,
+        include: {
+          creator: { select: { id: true, name: true, email: true, avatar: true } },
+          _count: { select: { quizQuestions: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.client.questionBank.count({ where }),
+    ]);
+
+    return {
+      data: rows.map((r) => this.mapRow(r)),
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
+  // =====================================================
+  // BULK DELETE for ADMIN — Phase 18
+  // =====================================================
+
+  /**
+   * Admin-only bulk delete. Câu đang dùng trong quiz → bỏ qua (ghi vào
+   * `skippedIds` + `skipped` count) để frontend hiển thị. Câu không tồn tại
+   * cũng bỏ qua lặng lẽ. Mỗi câu xoá được → 1 AuditLog entry.
+   *
+   * Vì sao không throw khi có câu đang dùng? Bulk UX của frontend đã disable
+   * checkbox câu "đang dùng" → admin chỉ chọn được câu xoá được. Nhưng defense
+   * in depth: nếu body lọt id đang dùng (bypass FE), vẫn trả về 200 để xoá
+   * những câu hợp lệ thay vì rollback toàn bộ.
+   */
+  async bulkRemove(actor: Actor, ids: string[], meta: { ip: string }) {
+    if (actor.role !== Role.ADMIN && actor.role !== Role.SUPER_ADMIN) {
+      throw new ForbiddenException('Chỉ admin mới xoá hàng loạt câu hỏi được');
+    }
+
+    const rows = await this.prisma.client.questionBank.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        question: true,
+        createdBy: true,
+        _count: { select: { quizQuestions: true } },
+      },
+    });
+
+    const inUse: string[] = [];
+    const deletable: Array<{ id: string; question: string; createdBy: string }> = [];
+    for (const row of rows) {
+      if (row._count.quizQuestions > 0) {
+        inUse.push(row.id);
+      } else {
+        deletable.push({ id: row.id, question: row.question, createdBy: row.createdBy });
+      }
+    }
+
+    if (deletable.length === 0) {
+      throw new BadRequestException(
+        inUse.length > 0
+          ? `Tất cả ${inUse.length} câu hỏi đang được dùng trong quiz — không thể xoá.`
+          : 'Không có câu hỏi nào hợp lệ để xoá.',
+      );
+    }
+
+    const deletableIds = deletable.map((d) => d.id);
+    await this.prisma.client.questionBank.deleteMany({
+      where: { id: { in: deletableIds } },
+    });
+
+    // Audit per-row — CLAUDE.md: "Mọi hành động admin/superadmin → ghi AuditLog"
+    for (const d of deletable) {
+      await this.audit.log({
+        userId: actor.id,
+        action: 'question.bulk-delete',
+        targetType: 'QuestionBank',
+        targetId: d.id,
+        ipAddress: meta.ip,
+        oldValue: { question: d.question, createdBy: d.createdBy },
+      });
+    }
+
+    return {
+      deleted: deletable.length,
+      skipped: inUse.length,
+      skippedIds: inUse,
+      deletedIds: deletableIds,
     };
   }
 

@@ -3,6 +3,7 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 
+import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 import { QuestionsService } from './questions.service';
@@ -28,11 +29,13 @@ describe('QuestionsService', () => {
         count: jest.Mock;
         update: jest.Mock;
         delete: jest.Mock;
+        deleteMany: jest.Mock;
       };
       course: { findFirst: jest.Mock };
       department: { findUnique: jest.Mock };
     };
   };
+  let audit: { log: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -45,13 +48,19 @@ describe('QuestionsService', () => {
           count: jest.fn(),
           update: jest.fn(),
           delete: jest.fn(),
+          deleteMany: jest.fn(),
         },
         course: { findFirst: jest.fn() },
         department: { findUnique: jest.fn() },
       },
     };
+    audit = { log: jest.fn().mockResolvedValue(undefined) };
     const mod: TestingModule = await Test.createTestingModule({
-      providers: [QuestionsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        QuestionsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: audit },
+      ],
     }).compile();
     service = mod.get(QuestionsService);
   });
@@ -308,6 +317,137 @@ describe('QuestionsService', () => {
       await service.list({ id: 'admin', role: Role.ADMIN }, { page: 1, limit: 10 });
       const where = prisma.client.questionBank.findMany.mock.calls[0][0].where;
       expect(where.createdBy).toBeUndefined();
+    });
+  });
+
+  // =====================================================
+  // Phase 18 — Admin-scoped list + bulk delete
+  // =====================================================
+  describe('listForAdmin', () => {
+    const admin = { id: 'admin-1', role: Role.ADMIN };
+
+    beforeEach(() => {
+      prisma.client.questionBank.findMany.mockResolvedValue([]);
+      prisma.client.questionBank.count.mockResolvedValue(0);
+    });
+
+    it('rejects non-admin (defense-in-depth)', async () => {
+      await expect(
+        service.listForAdmin({ id: 'inst', role: Role.INSTRUCTOR }, { page: 1 }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('admin sees ALL questions — no createdBy filter applied by default', async () => {
+      await service.listForAdmin(admin, { page: 1, limit: 20 });
+      const where = prisma.client.questionBank.findMany.mock.calls[0][0].where;
+      expect(where.createdBy).toBeUndefined();
+    });
+
+    it('filters by instructorId when provided', async () => {
+      await service.listForAdmin(admin, { instructorId: 'inst-42' });
+      const where = prisma.client.questionBank.findMany.mock.calls[0][0].where;
+      expect(where.createdBy).toBe('inst-42');
+    });
+
+    it('filters by subjectId via nested course relation', async () => {
+      await service.listForAdmin(admin, { subjectId: 'subj-1' });
+      const where = prisma.client.questionBank.findMany.mock.calls[0][0].where;
+      expect(where.course).toEqual({ subjectId: 'subj-1' });
+    });
+
+    it('filters by difficulty', async () => {
+      await service.listForAdmin(admin, { difficulty: 'HARD' as never });
+      const where = prisma.client.questionBank.findMany.mock.calls[0][0].where;
+      expect(where.difficulty).toBe('HARD');
+    });
+
+    it('filters by search term (case-insensitive contains)', async () => {
+      await service.listForAdmin(admin, { q: 'hà nội' });
+      const where = prisma.client.questionBank.findMany.mock.calls[0][0].where;
+      expect(where.question).toEqual({ contains: 'hà nội', mode: 'insensitive' });
+    });
+
+    it('includes creator + _count in the shape returned to the client', async () => {
+      await service.listForAdmin(admin, {});
+      const include = prisma.client.questionBank.findMany.mock.calls[0][0].include;
+      expect(include.creator).toBeDefined();
+      expect(include._count).toEqual({ select: { quizQuestions: true } });
+    });
+  });
+
+  describe('bulkRemove (admin)', () => {
+    const admin = { id: 'admin-1', role: Role.ADMIN };
+    const superAdmin = { id: 'super-1', role: Role.SUPER_ADMIN };
+    const meta = { ip: '127.0.0.1' };
+
+    it('rejects non-admin (instructor trying bulk delete → 403)', async () => {
+      await expect(
+        service.bulkRemove({ id: 'inst', role: Role.INSTRUCTOR }, ['q1'], meta),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('deletes only "not in use" questions, skips questions with quizQuestions > 0', async () => {
+      prisma.client.questionBank.findMany.mockResolvedValue([
+        { id: 'q1', question: 'Q1', createdBy: 'u1', _count: { quizQuestions: 0 } },
+        { id: 'q2', question: 'Q2', createdBy: 'u1', _count: { quizQuestions: 3 } }, // in use
+        { id: 'q3', question: 'Q3', createdBy: 'u2', _count: { quizQuestions: 0 } },
+      ]);
+      prisma.client.questionBank.deleteMany.mockResolvedValue({ count: 2 });
+
+      const result = await service.bulkRemove(admin, ['q1', 'q2', 'q3'], meta);
+
+      expect(result.deleted).toBe(2);
+      expect(result.skipped).toBe(1);
+      expect(result.skippedIds).toEqual(['q2']);
+      expect(result.deletedIds).toEqual(['q1', 'q3']);
+      expect(prisma.client.questionBank.deleteMany).toHaveBeenCalledWith({
+        where: { id: { in: ['q1', 'q3'] } },
+      });
+    });
+
+    it('throws 400 when all candidates are in use', async () => {
+      prisma.client.questionBank.findMany.mockResolvedValue([
+        { id: 'q1', question: 'Q1', createdBy: 'u1', _count: { quizQuestions: 2 } },
+        { id: 'q2', question: 'Q2', createdBy: 'u1', _count: { quizQuestions: 1 } },
+      ]);
+
+      await expect(service.bulkRemove(admin, ['q1', 'q2'], meta)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(prisma.client.questionBank.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('writes one audit log entry per successfully deleted question', async () => {
+      prisma.client.questionBank.findMany.mockResolvedValue([
+        { id: 'q1', question: 'Q1', createdBy: 'u1', _count: { quizQuestions: 0 } },
+        { id: 'q2', question: 'Q2', createdBy: 'u2', _count: { quizQuestions: 0 } },
+      ]);
+      prisma.client.questionBank.deleteMany.mockResolvedValue({ count: 2 });
+
+      await service.bulkRemove(superAdmin, ['q1', 'q2'], meta);
+
+      expect(audit.log).toHaveBeenCalledTimes(2);
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'super-1',
+          action: 'question.bulk-delete',
+          targetType: 'QuestionBank',
+          targetId: 'q1',
+          ipAddress: '127.0.0.1',
+        }),
+      );
+    });
+
+    it('non-existent ids are filtered out silently (no throw)', async () => {
+      // findMany returns only the 1 existing row — missing ids are dropped
+      prisma.client.questionBank.findMany.mockResolvedValue([
+        { id: 'q1', question: 'Q1', createdBy: 'u1', _count: { quizQuestions: 0 } },
+      ]);
+      prisma.client.questionBank.deleteMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.bulkRemove(admin, ['q1', 'ghost-id'], meta);
+      expect(result.deleted).toBe(1);
+      expect(result.skipped).toBe(0); // ghost-id is not "in use", just missing
     });
   });
 });
