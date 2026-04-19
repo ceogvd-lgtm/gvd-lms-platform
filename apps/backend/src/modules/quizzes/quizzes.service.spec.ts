@@ -130,26 +130,57 @@ describe('QuizzesService', () => {
   });
 
   // =====================================================
-  // remove (ADMIN+ only)
+  // remove — INSTRUCTOR owner + ADMIN+
   // =====================================================
   describe('remove', () => {
-    it('INSTRUCTOR cannot delete a quiz even if they own the course', async () => {
-      await expect(service.remove(owner, 'quiz-1', { ip: '127.0.0.1' })).rejects.toThrow(
-        ForbiddenException,
+    // Phase 18 — quiz của course → ownership check qua
+    // findQuizWithCourse + assertCourseOwner. Setup mock trả quiz với
+    // course.instructorId để 2 test dưới phân biệt được owner/stranger.
+    const quizRow = (instructorId: string) => ({
+      id: 'quiz-1',
+      title: 't',
+      lessonId: 'lesson-1',
+      lesson: { chapter: { course: { id: 'course-1', instructorId } } },
+    });
+
+    it('INSTRUCTOR owner CAN delete their own quiz', async () => {
+      prisma.client.quiz.findUnique.mockResolvedValue(quizRow(owner.id));
+      prisma.client.quiz.delete.mockResolvedValue({});
+
+      const res = await service.remove(owner, 'quiz-1', { ip: '127.0.0.1' });
+
+      expect(prisma.client.quiz.delete).toHaveBeenCalledWith({ where: { id: 'quiz-1' } });
+      expect(res.message).toContain('Đã xoá');
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'QUIZ_DELETE', targetId: 'quiz-1' }),
       );
     });
 
-    it('ADMIN can delete and writes an audit log', async () => {
-      prisma.client.quiz.findUnique.mockResolvedValue({
-        id: 'quiz-1',
-        title: 't',
-        lessonId: 'lesson-1',
-      });
+    it('INSTRUCTOR stranger (not course owner) → ForbiddenException', async () => {
+      prisma.client.quiz.findUnique.mockResolvedValue(quizRow(owner.id));
+
+      await expect(service.remove(stranger, 'quiz-1', { ip: '127.0.0.1' })).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prisma.client.quiz.delete).not.toHaveBeenCalled();
+    });
+
+    it('ADMIN bypass ownership — can delete any quiz', async () => {
+      prisma.client.quiz.findUnique.mockResolvedValue(quizRow('some-other-instructor'));
       prisma.client.quiz.delete.mockResolvedValue({});
+
       await service.remove({ id: 'admin', role: Role.ADMIN }, 'quiz-1', { ip: '127.0.0.1' });
+
       expect(prisma.client.quiz.delete).toHaveBeenCalledWith({ where: { id: 'quiz-1' } });
       expect(audit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'QUIZ_DELETE', targetId: 'quiz-1' }),
+      );
+    });
+
+    it('404 when quiz does not exist', async () => {
+      prisma.client.quiz.findUnique.mockResolvedValue(null);
+      await expect(service.remove(owner, 'ghost', { ip: '127.0.0.1' })).rejects.toThrow(
+        NotFoundException,
       );
     });
   });

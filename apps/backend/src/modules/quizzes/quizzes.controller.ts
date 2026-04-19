@@ -85,7 +85,9 @@ export class QuizzesController {
   }
 
   @Delete('quizzes/:id')
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  // Phase 18 — nới quyền: INSTRUCTOR xoá được quiz của course mình;
+  // service check ownership qua assertCourseOwner (lesson→chapter→course).
+  @Roles(Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
   remove(@CurrentUser() user: JwtPayload, @Param('id') id: string, @Req() req: Request) {
     return this.quizzes.remove({ id: user.sub, role: user.role }, id, { ip: getClientIp(req) });
   }
