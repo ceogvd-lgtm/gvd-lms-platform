@@ -554,6 +554,26 @@ function Step1Info({
           </select>
         </div>
       </div>
+
+      {/*
+        Empty state guard: khi ngành đã chọn nhưng dropdown môn rỗng, instructor
+        trước đây bị kẹt im lặng — không biết lý do. Hiển thị warning màu vàng
+        + hướng dẫn liên hệ admin thay vì để họ đoán (xem CONTEXT.md Phase 18).
+        Instructor không được tạo Subject (quyền ADMIN+) nên không thể tự sửa.
+      */}
+      {departmentId && subjects.length === 0 && (
+        <div className="flex items-start gap-3 rounded-card border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-700/50 dark:bg-amber-900/20">
+          <span className="mt-0.5 text-base leading-none">⚠️</span>
+          <div className="flex-1 text-amber-900 dark:text-amber-200">
+            <p className="font-semibold">Ngành này chưa có môn học nào</p>
+            <p className="mt-1 text-amber-800 dark:text-amber-300/90">
+              Bạn không thể tạo khoá học nếu ngành chưa có môn. Vui lòng liên hệ{' '}
+              <span className="font-semibold">Quản trị viên</span> để tạo môn học trước, hoặc chọn
+              ngành khác đã có môn.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

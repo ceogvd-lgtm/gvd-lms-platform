@@ -210,7 +210,7 @@ export default function InstructorCoursesPage() {
               course={c}
               onArchive={handleArchive}
               onSubmitForReview={handleSubmitForReview}
-              editHref={`/admin/curriculum?courseId=${c.id}`}
+              editHref={`/instructor/courses/${c.id}/edit`}
             />
           ))}
         </div>
@@ -254,7 +254,7 @@ export default function InstructorCoursesPage() {
                         Xem
                       </Link>
                       <Link
-                        href={`/admin/curriculum?courseId=${c.id}`}
+                        href={`/instructor/courses/${c.id}/edit`}
                         className="inline-flex h-8 items-center gap-1 rounded-button bg-primary/10 px-2.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
                       >
                         <Edit className="h-3.5 w-3.5" />
