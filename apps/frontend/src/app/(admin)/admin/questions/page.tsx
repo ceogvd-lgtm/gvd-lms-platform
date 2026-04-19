@@ -14,11 +14,12 @@
  */
 import { Button } from '@lms/ui';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { RotateCcw, Search, Trash2 } from 'lucide-react';
+import { RotateCcw, Search, Trash2, UploadCloud } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { DifficultyBadge } from '@/components/questions/difficulty-badge';
+import { ExcelImportModal } from '@/components/questions/excel-import-modal';
 import { adminQuestionsApi } from '@/lib/admin-questions';
 import { adminApi, ApiError } from '@/lib/api';
 import { type Difficulty, type QuestionBank, questionsApi } from '@/lib/assessments';
@@ -42,6 +43,9 @@ export default function AdminQuestionsPage() {
   const [instructorId, setInstructorId] = useState<string>('');
   const [difficulty, setDifficulty] = useState<Difficulty | ''>('');
   const [page, setPage] = useState(1);
+
+  // ---------- Modal state ----------
+  const [importOpen, setImportOpen] = useState(false);
 
   // ---------- Selection ----------
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -192,6 +196,16 @@ export default function AdminQuestionsPage() {
             Quản lý toàn bộ câu hỏi của mọi giảng viên. Chỉ xoá được câu{' '}
             <span className="font-semibold">Chưa dùng</span> để tránh phá vỡ quiz đang chạy.
           </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {/* Phase 18 — admin cũng dùng chung ExcelImportModal với instructor.
+              Modal có sẵn nút "Tải template mẫu" + parser SheetJS client-side
+              + dry-run preview; POST /questions/import là endpoint dùng chung
+              (ADMIN+ → câu tạo ra có createdBy = admin). */}
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            <UploadCloud className="h-4 w-4" />
+            Nhập từ Excel
+          </Button>
         </div>
       </div>
 
@@ -365,6 +379,12 @@ export default function AdminQuestionsPage() {
           </div>
         </div>
       )}
+
+      {/* Import Excel modal — shared component với /instructor/questions.
+          Sau import: invalidate cache admin + instructor để cả 2 view đều
+          thấy câu mới. Modal tự gọi questionsApi.import() và backend
+          tự set createdBy = admin. */}
+      <ExcelImportModal open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }

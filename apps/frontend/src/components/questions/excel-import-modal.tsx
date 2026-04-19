@@ -177,7 +177,26 @@ function buildOptions(
   }));
 }
 
-function downloadTemplate() {
+/**
+ * Download template — ưu tiên file tĩnh `/templates/question-bank-template.xlsx`
+ * (commit sẵn trong public/), fallback sinh động bằng SheetJS nếu fetch lỗi.
+ * Có file tĩnh giúp share link qua chat/email không cần mở UI.
+ */
+async function downloadTemplate() {
+  try {
+    const res = await fetch('/templates/question-bank-template.xlsx', { cache: 'no-cache' });
+    if (!res.ok) throw new Error('Template not found');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'question-bank-template.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+    return;
+  } catch {
+    // Fallback — sinh tại runtime nếu file tĩnh thiếu (dev trước generator).
+  }
   const header = [
     [
       'Question',
@@ -271,6 +290,8 @@ export function ExcelImportModal({ open, onOpenChange, defaultCourseId }: ExcelI
       setResult(res);
       qc.invalidateQueries({ queryKey: ['questions'] });
       qc.invalidateQueries({ queryKey: ['question-tags'] });
+      // Phase 18 — modal dùng chung cho /admin/questions → invalidate cả cache admin.
+      qc.invalidateQueries({ queryKey: ['admin-questions'] });
       if (res.created > 0) {
         toast.success(`Đã nhập ${res.created} câu hỏi`);
       }
