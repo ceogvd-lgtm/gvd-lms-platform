@@ -4,6 +4,7 @@ import { Sidebar, type SidebarItem } from '@lms/ui';
 import {
   Award,
   BarChart3,
+  BookOpen,
   FileText,
   LayoutDashboard,
   LayoutGrid,
@@ -58,6 +59,14 @@ export function AdminSidebar({ collapsed = false }: AdminSidebarProps) {
         href: '/admin/content',
         icon: FileText,
         active: isActive('/admin/content'),
+      },
+      {
+        // Phase 18 — admin-scoped question bank view (xem toàn bộ, xoá hàng loạt).
+        // /instructor/questions vẫn còn & không bị ảnh hưởng.
+        label: 'Ngân hàng câu hỏi',
+        href: '/admin/questions',
+        icon: BookOpen,
+        active: isActive('/admin/questions'),
       },
       {
         label: 'Chứng chỉ',
