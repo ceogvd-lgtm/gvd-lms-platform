@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { StorageService } from '../../common/storage/storage.service';
 import { CertificatesService } from '../certificates/certificates.service';
 import { ProgressService } from '../progress/progress.service';
 import { XpService } from '../students/xp.service';
@@ -48,6 +49,8 @@ describe('LessonsService — getContext', () => {
         { provide: ProgressService, useValue: { calculateCourseProgress: jest.fn() } },
         // Phase 16 — same for CertificatesService.
         { provide: CertificatesService, useValue: { checkAndIssueCertificate: jest.fn() } },
+        // Phase 18 — StorageService chỉ đụng trong softDelete, stub no-op.
+        { provide: StorageService, useValue: { delete: jest.fn(), deletePrefix: jest.fn() } },
       ],
     }).compile();
     service = mod.get(LessonsService);

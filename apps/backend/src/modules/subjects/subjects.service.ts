@@ -2,20 +2,26 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { StorageService } from '../../common/storage/storage.service';
+import { extractMinioKey } from '../../common/storage/storage.utils';
 
 import type { CreateSubjectDto } from './dto/create-subject.dto';
 import type { UpdateSubjectDto } from './dto/update-subject.dto';
 
 @Injectable()
 export class SubjectsService {
+  private readonly logger = new Logger(SubjectsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly storage: StorageService,
   ) {}
 
   // _count chỉ đếm courses đang hoạt động (isDeleted=false) để UI hiển thị
@@ -128,6 +134,23 @@ export class SubjectsService {
       oldValue: { name: subject.name, code: subject.code },
     });
 
+    // Option A — xoá thumbnail mồ côi khỏi MinIO. Không throw dù fail để
+    // đảm bảo flow xoá entity luôn hoàn tất; orphan file (nếu có) sẽ
+    // được cron weekly (Option B) quét và dọn.
+    await this.cleanupFile(subject.thumbnailUrl, `subject ${id} thumbnail`);
+
     return { message: 'Đã xoá môn học' };
+  }
+
+  private async cleanupFile(url: string | null | undefined, label: string): Promise<void> {
+    const key = extractMinioKey(url);
+    if (!key) return;
+    try {
+      await this.storage.delete(key);
+    } catch (err) {
+      this.logger.warn(
+        `Storage cleanup failed for ${label} (key=${key}): ${(err as Error).message}`,
+      );
+    }
   }
 }

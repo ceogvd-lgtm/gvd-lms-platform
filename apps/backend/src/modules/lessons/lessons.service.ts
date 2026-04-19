@@ -5,11 +5,14 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { StorageService } from '../../common/storage/storage.service';
+import { extractMinioKey } from '../../common/storage/storage.utils';
 import { CertificatesService } from '../certificates/certificates.service';
 import { ProgressService } from '../progress/progress.service';
 import { XpReason, XpService } from '../students/xp.service';
@@ -28,6 +31,8 @@ interface RequestMeta {
 
 @Injectable()
 export class LessonsService {
+  private readonly logger = new Logger(LessonsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -41,6 +46,8 @@ export class LessonsService {
     // completion transition. Fire-and-forget; the service handles its
     // own idempotency (ALREADY_ISSUED short-circuit).
     private readonly certificates: CertificatesService,
+    // Phase 18 — cleanup file mồ côi trên MinIO khi soft-delete lesson.
+    private readonly storage: StorageService,
   ) {}
 
   private async findLessonWithCourse(id: string) {
@@ -158,9 +165,16 @@ export class LessonsService {
       throw new ForbiddenException('Chỉ quản trị viên mới có quyền xoá bài giảng');
     }
 
+    // Phase 18 — select thêm các URL files để có thể cleanup khỏi MinIO
+    // sau khi xoá record. Dùng `include` để join sang theoryContent /
+    // practiceContent / attachments trong 1 roundtrip.
     const lesson = await this.prisma.client.lesson.findUnique({
       where: { id },
-      select: { id: true, title: true, isDeleted: true, chapterId: true },
+      include: {
+        theoryContent: { select: { contentUrl: true } },
+        practiceContent: { select: { webglUrl: true } },
+        attachments: { select: { fileUrl: true } },
+      },
     });
     if (!lesson) throw new NotFoundException('Không tìm thấy bài giảng');
     if (lesson.isDeleted) {
@@ -183,7 +197,57 @@ export class LessonsService {
       newValue: { title: updated.title, isDeleted: true },
     });
 
+    // Option A — cleanup files mồ côi. Mỗi file try/catch riêng để
+    // một failure không chặn những file khác. Không throw; cron weekly
+    // (Option B) sẽ xử lý file còn sót.
+    //
+    // WebGL content có cấu trúc thư mục (loader.js + data + framework +
+    // wasm + index.html) — dùng `deletePrefix` thay vì `delete` để dọn
+    // sạch cả cây. `content/webgl/<id>/` là prefix theo convention upload.
+    await this.cleanupFile(lesson.theoryContent?.contentUrl, `lesson ${id} theory`);
+    await this.cleanupPracticeWebgl(lesson.practiceContent?.webglUrl, `lesson ${id} webgl`);
+    for (const att of lesson.attachments) {
+      await this.cleanupFile(att.fileUrl, `lesson ${id} attachment`);
+    }
+
     return { message: 'Đã xoá bài giảng', lesson: updated };
+  }
+
+  private async cleanupFile(url: string | null | undefined, label: string): Promise<void> {
+    const key = extractMinioKey(url);
+    if (!key) return;
+    try {
+      await this.storage.delete(key);
+    } catch (err) {
+      this.logger.warn(
+        `Storage cleanup failed for ${label} (key=${key}): ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * WebGL dùng nhiều file trong cùng thư mục (loader/data/framework/wasm
+   * + index.html + data folder). URL thường trỏ tới `index.html`; ta
+   * chuyển sang prefix chứa thư mục để xoá hết. Nếu không parse được
+   * thì fallback sang cleanupFile.
+   */
+  private async cleanupPracticeWebgl(url: string | null | undefined, label: string): Promise<void> {
+    const key = extractMinioKey(url);
+    if (!key) return;
+    // `content/webgl/<slug>/index.html` → prefix `content/webgl/<slug>/`
+    const lastSlash = key.lastIndexOf('/');
+    const prefix = lastSlash > 0 ? key.slice(0, lastSlash + 1) : null;
+    if (!prefix || !prefix.startsWith('content/webgl/')) {
+      // Không phải cây WebGL thông thường → xoá 1 file
+      return this.cleanupFile(url, label);
+    }
+    try {
+      await this.storage.deletePrefix(prefix);
+    } catch (err) {
+      this.logger.warn(
+        `Storage cleanup failed for ${label} (prefix=${prefix}): ${(err as Error).message}`,
+      );
+    }
   }
 
   // =====================================================

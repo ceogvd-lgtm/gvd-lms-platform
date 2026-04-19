@@ -131,6 +131,24 @@ export class StorageService implements OnModuleInit {
   }
 
   /**
+   * Phase 18 — liệt kê tất cả key dưới 1 prefix. Dùng cho job cleanup
+   * weekly: so sánh `listKeys()` với tập URL đang dùng trong DB để tìm
+   * orphan. Recursive (true) → bao cả sub-folder như content/webgl/<id>/*.
+   */
+  async listKeys(prefix: string): Promise<string[]> {
+    const keys: string[] = [];
+    const stream = this.client.listObjectsV2(ROOT_BUCKET, prefix, true);
+    await new Promise<void>((resolve, reject) => {
+      stream.on('data', (obj) => {
+        if (obj.name) keys.push(obj.name);
+      });
+      stream.on('end', () => resolve());
+      stream.on('error', reject);
+    });
+    return keys;
+  }
+
+  /**
    * Generate a time-limited URL for GET access to a private object.
    * Default TTL 1 hour per Phase 06 spec.
    */
