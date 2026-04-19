@@ -37,6 +37,22 @@ export interface ImportResult {
   preview?: Array<CreateQuestionDto & { row: number }>;
 }
 
+/**
+ * Phase 18 — chỉ đếm / coi là "đang dùng" nếu quiz còn nằm trong course
+ * + lesson chưa bị soft-delete. Nếu không filter, cascade KHÔNG chạy khi
+ * admin soft-delete course → QuizQuestion row vẫn còn → câu hỏi mắc kẹt
+ * "Đang dùng trong N quiz" dù course đã archived. Xem bug report ngày
+ * 2026-04-19: 3 câu PPE mắc kẹt bởi quiz thuộc course.isDeleted=true.
+ */
+const ALIVE_QUIZ_QUESTION_WHERE = {
+  quiz: {
+    lesson: {
+      isDeleted: false,
+      chapter: { course: { isDeleted: false } },
+    },
+  },
+} as const;
+
 @Injectable()
 export class QuestionsService {
   constructor(
@@ -278,10 +294,10 @@ export class QuestionsService {
         where,
         include: {
           creator: { select: { id: true, name: true, email: true, avatar: true } },
-          // Phase 18 — đếm số quiz đang dùng câu hỏi này để UI hiện badge
-          // "Đang dùng trong N quiz" và disable nút Xoá. Không filter
-          // ở đây vì question_bank không có soft-delete (hard delete only).
-          _count: { select: { quizQuestions: true } },
+          // Phase 18 — đếm số quiz ĐANG HOẠT ĐỘNG (không tính quiz thuộc
+          // course/lesson đã soft-delete). Nếu không filter, câu hỏi mắc
+          // kẹt "đang dùng" mãi mãi khi admin archive course.
+          _count: { select: { quizQuestions: { where: ALIVE_QUIZ_QUESTION_WHERE } } },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
@@ -339,7 +355,8 @@ export class QuestionsService {
         where,
         include: {
           creator: { select: { id: true, name: true, email: true, avatar: true } },
-          _count: { select: { quizQuestions: true } },
+          // Cùng filter alive như list() — bug fix 2026-04-19.
+          _count: { select: { quizQuestions: { where: ALIVE_QUIZ_QUESTION_WHERE } } },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
@@ -382,7 +399,9 @@ export class QuestionsService {
         id: true,
         question: true,
         createdBy: true,
-        _count: { select: { quizQuestions: true } },
+        // Chỉ coi là "đang dùng" nếu có quiz ALIVE (không tính orphan).
+        // Với câu mắc kẹt bởi quiz mồ côi → _count = 0 → admin xoá được.
+        _count: { select: { quizQuestions: { where: ALIVE_QUIZ_QUESTION_WHERE } } },
       },
     });
 
@@ -539,7 +558,13 @@ export class QuestionsService {
   async remove(actor: Actor, id: string) {
     const existing = await this.prisma.client.questionBank.findUnique({
       where: { id },
-      select: { id: true, createdBy: true, _count: { select: { quizQuestions: true } } },
+      select: {
+        id: true,
+        createdBy: true,
+        // Chỉ đếm quiz ALIVE — instructor không bị chặn bởi orphan quiz
+        // của course đã archived (bug fix 2026-04-19).
+        _count: { select: { quizQuestions: { where: ALIVE_QUIZ_QUESTION_WHERE } } },
+      },
     });
     if (!existing) throw new NotFoundException('Không tìm thấy câu hỏi');
 

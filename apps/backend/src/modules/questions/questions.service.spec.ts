@@ -371,7 +371,19 @@ describe('QuestionsService', () => {
       await service.listForAdmin(admin, {});
       const include = prisma.client.questionBank.findMany.mock.calls[0][0].include;
       expect(include.creator).toBeDefined();
-      expect(include._count).toEqual({ select: { quizQuestions: true } });
+      // Phase 18 bugfix: _count.quizQuestions filter theo ALIVE quiz
+      // (course.isDeleted=false + lesson.isDeleted=false) để tránh câu
+      // hỏi mắc kẹt khi admin soft-delete course.
+      expect(include._count.select.quizQuestions).toMatchObject({
+        where: {
+          quiz: {
+            lesson: {
+              isDeleted: false,
+              chapter: { course: { isDeleted: false } },
+            },
+          },
+        },
+      });
     });
   });
 
