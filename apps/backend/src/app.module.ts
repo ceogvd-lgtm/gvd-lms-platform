@@ -43,6 +43,7 @@ import { StudentsModule } from './modules/students/students.module';
 import { SubjectsModule } from './modules/subjects/subjects.module';
 import { SystemSettingsModule } from './modules/system-settings/system-settings.module';
 import { TheoryContentsModule } from './modules/theory-contents/theory-contents.module';
+import { UsersModule } from './modules/users/users.module';
 import { VideoProgressModule } from './modules/video-progress/video-progress.module';
 import { XapiModule } from './modules/xapi/xapi.module';
 // Phase 14
@@ -82,6 +83,7 @@ const monorepoRoot = join(__dirname, '..', '..', '..');
     AuditModule,
     NotificationsModule,
     AuthModule,
+    UsersModule,
     AdminModule,
     DepartmentsModule,
     SubjectsModule,

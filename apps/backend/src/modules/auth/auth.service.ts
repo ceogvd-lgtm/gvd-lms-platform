@@ -422,6 +422,41 @@ export class AuthService {
   }
 
   // =====================================================
+  // CHANGE PASSWORD
+  // =====================================================
+  /**
+   * Đổi mật khẩu cho user đang đăng nhập. Require oldPassword để chống
+   * session-hijack: JWT bị đánh cắp không đổi password được.
+   *
+   * KHÔNG invalidate refresh tokens hiện có — user bấm "đổi mật khẩu"
+   * ở thiết bị này vẫn tiếp tục dùng session. Nếu nghi lộ, user dùng
+   * luồng khác (future: "Đăng xuất tất cả thiết bị") để revoke.
+   */
+  async changePassword(
+    userId: string,
+    dto: { oldPassword: string; newPassword: string },
+  ): Promise<{ message: string }> {
+    const user = await this.prisma.client.user.findUnique({ where: { id: userId } });
+    if (!user || !user.password) {
+      throw new UnauthorizedException('Người dùng không tồn tại hoặc chưa có mật khẩu');
+    }
+    const ok = await bcrypt.compare(dto.oldPassword, user.password);
+    if (!ok) throw new UnauthorizedException('Mật khẩu cũ không đúng');
+
+    if (dto.oldPassword === dto.newPassword) {
+      throw new BadRequestException('Mật khẩu mới phải khác mật khẩu cũ');
+    }
+
+    const hashed = await bcrypt.hash(dto.newPassword, BCRYPT_SALT_ROUNDS);
+    await this.prisma.client.user.update({
+      where: { id: userId },
+      data: { password: hashed },
+    });
+
+    return { message: 'Đổi mật khẩu thành công' };
+  }
+
+  // =====================================================
   // Internals
   // =====================================================
 
