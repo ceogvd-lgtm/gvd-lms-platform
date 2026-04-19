@@ -69,19 +69,38 @@ export class DepartmentsService {
   }
 
   async remove(id: string) {
+    // Đếm toàn bộ subjects (cả active + soft-deleted). Subject soft-delete
+    // vẫn tham chiếu FK department.id nên phải được giải quyết trước khi
+    // hard-delete department; Prisma sẽ ném P2003 nếu còn bất kỳ hàng con.
+    //
+    // Không cascade trong code vì Subject còn kéo theo Course → Chapter →
+    // Lesson → Quiz/Attempt/Certificate/... — chuỗi FK quá dài để xoá
+    // thủ công an toàn. Nếu business cần hard delete tận gốc, sẽ chuyển
+    // sang soft-delete Department (migration + filter) ở phase sau.
     const dept = await this.prisma.client.department.findUnique({
       where: { id },
       include: {
-        _count: { select: { subjects: { where: { isDeleted: false } } } },
+        subjects: { select: { id: true, name: true, isDeleted: true } },
       },
     });
     if (!dept) throw new NotFoundException('Không tìm thấy ngành học');
 
-    if (dept._count.subjects > 0) {
+    const active = dept.subjects.filter((s) => !s.isDeleted);
+    const softDeleted = dept.subjects.filter((s) => s.isDeleted);
+
+    if (active.length > 0) {
       throw new BadRequestException(
-        `Không thể xoá — còn ${dept._count.subjects} môn học chưa xoá. Xoá hết môn trước.`,
+        `Không thể xoá — còn ${active.length} môn học chưa xoá. Xoá hết môn trước.`,
       );
     }
+
+    if (softDeleted.length > 0) {
+      throw new BadRequestException(
+        `Không thể xoá — ngành còn ${softDeleted.length} môn đã xoá mềm nhưng chưa dọn dữ liệu con (khoá học cũ). ` +
+          `Xử lý qua Prisma Studio hoặc script dọn dẹp trước khi xoá ngành.`,
+      );
+    }
+
     await this.prisma.client.department.delete({ where: { id } });
     return { message: 'Đã xoá ngành học' };
   }
