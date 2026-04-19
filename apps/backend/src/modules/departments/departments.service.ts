@@ -19,7 +19,9 @@ export class DepartmentsService {
       where: includeInactive ? {} : { isActive: true },
       orderBy: [{ order: 'asc' }, { name: 'asc' }],
       include: {
-        _count: { select: { subjects: true } },
+        // Chỉ đếm môn học active (isDeleted=false) — các môn đã xoá mềm
+        // không hiện trong tree curriculum nên không cần tính vào badge.
+        _count: { select: { subjects: { where: { isDeleted: false } } } },
       },
     });
   }
@@ -27,7 +29,9 @@ export class DepartmentsService {
   async findOne(id: string) {
     const dept = await this.prisma.client.department.findUnique({
       where: { id },
-      include: { _count: { select: { subjects: true } } },
+      include: {
+        _count: { select: { subjects: { where: { isDeleted: false } } } },
+      },
     });
     if (!dept) throw new NotFoundException('Không tìm thấy ngành học');
     return dept;
@@ -67,13 +71,15 @@ export class DepartmentsService {
   async remove(id: string) {
     const dept = await this.prisma.client.department.findUnique({
       where: { id },
-      include: { _count: { select: { subjects: true } } },
+      include: {
+        _count: { select: { subjects: { where: { isDeleted: false } } } },
+      },
     });
     if (!dept) throw new NotFoundException('Không tìm thấy ngành học');
 
     if (dept._count.subjects > 0) {
       throw new BadRequestException(
-        `Không thể xoá — ngành này còn ${dept._count.subjects} môn học. Xoá hết môn trước.`,
+        `Không thể xoá — còn ${dept._count.subjects} môn học chưa xoá. Xoá hết môn trước.`,
       );
     }
     await this.prisma.client.department.delete({ where: { id } });

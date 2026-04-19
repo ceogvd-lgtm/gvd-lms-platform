@@ -120,6 +120,22 @@ export default function CurriculumPage() {
     }
   };
 
+  const deleteSubject = async (s: Subject) => {
+    if (
+      !confirm(
+        `Xoá môn học "${s.name}"?\n\nHành động này không thể hoàn tác qua UI (cần DB trực tiếp).`,
+      )
+    )
+      return;
+    try {
+      await subjectsApi.remove(s.id, token!);
+      toast.success('Đã xoá môn học');
+      invalidateAll();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : (err as Error).message);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Breadcrumb items={[{ label: 'Admin', href: '/admin/users' }, { label: 'Curriculum' }]} />
@@ -160,6 +176,7 @@ export default function CurriculumPage() {
               toggle={toggle}
               setPanel={setPanel}
               onDelete={deleteDept}
+              onDeleteSubject={deleteSubject}
             />
           ))}
         </ul>
@@ -339,12 +356,14 @@ function DepartmentNode({
   toggle,
   setPanel,
   onDelete,
+  onDeleteSubject,
 }: {
   dept: Department;
   expanded: Set<string>;
   toggle: (key: string) => void;
   setPanel: (p: PanelState) => void;
   onDelete: (d: Department) => void;
+  onDeleteSubject: (s: Subject) => void;
 }) {
   const key = `dept:${dept.id}`;
   const open = expanded.has(key);
@@ -403,6 +422,7 @@ function DepartmentNode({
                 expanded={expanded}
                 toggle={toggle}
                 setPanel={setPanel}
+                onDelete={onDeleteSubject}
               />
             ))}
           </ul>
@@ -420,11 +440,13 @@ function SubjectNode({
   expanded,
   toggle,
   setPanel,
+  onDelete,
 }: {
   subject: Subject;
   expanded: Set<string>;
   toggle: (key: string) => void;
   setPanel: (p: PanelState) => void;
+  onDelete: (s: Subject) => void;
 }) {
   const token = useAuthStore((s) => s.accessToken);
   const key = `subj:${subject.id}`;
@@ -461,6 +483,12 @@ function SubjectNode({
             icon: Pencil,
             label: 'Sửa',
             onClick: () => setPanel({ kind: 'subject-edit', item: subject }),
+          },
+          {
+            icon: Trash2,
+            label: 'Xoá',
+            destructive: true,
+            onClick: () => onDelete(subject),
           },
         ]}
       />
