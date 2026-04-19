@@ -237,6 +237,12 @@ pnpm --filter @lms/ui build           # khi sửa packages/ui
 - Admin + Instructor không còn "Sắp có" (dùng sidebar riêng)
 - /profile + /account/settings: trang cá nhân mọi role (dashboard group)
 - PATCH /users/me: sửa name + avatar (KHÔNG sửa role/email)
+- Quiz delete: INSTRUCTOR chỉ xóa quiz trong course mình sở hữu
+  (assertCourseOwner: lesson→chapter→course.instructorId=actor.id)
+- INSTRUCTOR A KHÔNG xóa được quiz của INSTRUCTOR B → 403
+- ADMIN+ bypass quiz delete như cũ
+- Rule "không xóa" chỉ áp cho Lesson/Chapter/Course
+  KHÔNG áp cho Quiz (assessment tool nhỏ)
 - POST /auth/change-password: cần oldPassword
 - Xoá Ngành: chỉ SUPER_ADMIN | Xoá Môn: ADMIN+ | phải xoá con trước
 - Subject có isDeleted + \_count filter isDeleted=false
