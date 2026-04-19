@@ -20,6 +20,11 @@ import {
   toast,
 } from '@lms/ui';
 import { ArrowRight, Award, BookOpen, Sparkles, Users } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
+
+import { homeForRole } from '@/lib/auth-redirect';
+import { useAuthStore, useHasHydrated } from '@/lib/auth-store';
 
 const STATS = [
   { label: 'Khoá học', value: '12', icon: BookOpen, change: '+2 tuần này' },
@@ -29,6 +34,24 @@ const STATS = [
 ];
 
 export default function DashboardPage() {
+  // Auto-redirect về workspace của role sau khi Zustand hydrate xong.
+  // Shared `/dashboard` vẫn tồn tại làm fallback (VD role null/bất thường)
+  // nhưng user thực tế sẽ không bao giờ nhìn thấy nó nếu có role hợp lệ.
+  const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+  const hasHydrated = useHasHydrated();
+
+  useEffect(() => {
+    if (!hasHydrated) return;
+    const target = homeForRole(user?.role);
+    if (target !== '/dashboard') {
+      router.replace(target);
+    }
+  }, [hasHydrated, user?.role, router]);
+
+  // Trong lúc Zustand hydrate / đang redirect: để UI mặc định render.
+  // Nếu role = null (chưa login) thì (dashboard)/layout.tsx sẽ tự bounce
+  // về /login qua guard hiện có — không đụng gì ở đây.
   return (
     <div className="space-y-8">
       {/* Breadcrumb */}

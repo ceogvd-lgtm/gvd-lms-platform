@@ -37,6 +37,28 @@ const nextConfig = {
         source: '/scorm-content/:path*',
         destination: `${MINIO_PUBLIC_BASE_URL}/content/scorm/:path*`,
       },
+      {
+        source: '/api/v1/:path*',
+        destination: 'http://localhost:4000/api/v1/:path*',
+      },
+      {
+        source: '/socket.io/:path*',
+        destination: 'http://localhost:4000/socket.io/:path*',
+      },
+      {
+        source: '/minio/:path*',
+        destination: 'http://localhost:9000/lms-uploads/:path*',
+      },
+    ];
+  },
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'ngrok-skip-browser-warning', value: 'true' },
+        ],
+      },
     ];
   },
 };
