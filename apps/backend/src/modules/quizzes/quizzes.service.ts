@@ -256,14 +256,13 @@ export class QuizzesService {
   // DELETE /quizzes/:id (ADMIN+ only per CLAUDE.md)
   // =====================================================
   async remove(actor: Actor, id: string, meta: RequestMeta) {
-    if (actor.role !== Role.ADMIN && actor.role !== Role.SUPER_ADMIN) {
-      throw new ForbiddenException('Chỉ quản trị viên mới có quyền xoá quiz');
-    }
-    const quiz = await this.prisma.client.quiz.findUnique({
-      where: { id },
-      select: { id: true, title: true, lessonId: true },
-    });
+    // Phase 18 — nới lỏng quyền xoá: INSTRUCTOR được xoá quiz trong
+    // course của MÌNH (assessment tool do họ tạo + quản lý). CLAUDE.md
+    // "INSTRUCTOR KHÔNG CÓ NÚT XOÁ" áp cho lesson — không phải quiz.
+    // ADMIN+ bypass ownership như mọi action khác.
+    const quiz = await this.findQuizWithCourse(id);
     if (!quiz) throw new NotFoundException('Không tìm thấy quiz');
+    this.assertCourseOwner(actor, quiz.lesson.chapter.course.instructorId);
 
     await this.prisma.client.quiz.delete({ where: { id } });
 
