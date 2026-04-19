@@ -63,6 +63,16 @@ Frontend: disable button + tooltip giải thích (không ẩn button).
 - **INSTRUCTOR**: Tạo | Sửa | Lưu trữ — **TUYỆT ĐỐI KHÔNG CÓ NÚT XOÁ**
 - **ADMIN / SUPER_ADMIN**: Có thể xoá (soft delete: `isDeleted=true`, ghi AuditLog)
 
+## Phân Quyền Curriculum — QUAN TRỌNG
+
+- Xoá Ngành (Department): chỉ SUPER_ADMIN
+  → Phải xoá hết môn con trước
+- Xoá Môn (Subject): ADMIN + SUPER_ADMIN
+  → Phải xoá hết khoá học trước
+- Xoá Khoá học: ADMIN + SUPER_ADMIN
+- Tất cả soft delete: isDeleted=true + AuditLog
+- \_count luôn filter isDeleted=false
+
 ## API Convention
 
 - Base URL: `/api/v1/`
@@ -91,10 +101,18 @@ Tất cả shared types ở `packages/types/src/`:
 
 ## Tài Khoản Test
 
-- SUPER_ADMIN: admin@lms.local / Admin@123456
-- SUPER_ADMIN (Google): ceo.gvd@gmail.com (role đã set trong DB)
+- SUPER_ADMIN: admin@lms.local / [Dangphuc@2016]
+  → Tài khoản quản trị cao nhất
+  → Xoá ngành, quản lý admin, toàn quyền
+- ADMIN (Google): ceo.gvd@gmail.com
+  → Quản lý nội dung, người dùng
+  → Đăng nhập bằng nút Google OAuth
 - INSTRUCTOR: instructor@lms.local / Instructor@123456
 - STUDENT: student@lms.local / Student@123456
+
+⚠️ Chỉ có 1 SUPER_ADMIN duy nhất: admin@lms.local
+⚠️ Xoá ngành học: BẮT BUỘC login admin@lms.local
+⚠️ ceo.gvd@gmail.com = ADMIN (đăng nhập Google)
 
 ## Environment Variables (xem .env.example)
 
@@ -176,7 +194,7 @@ apps/frontend/src/app/
 ├── (admin)/ → /admin/dashboard, users, content, curriculum...
 ├── (instructor)/ → /instructor/dashboard, courses, lessons, analytics...
 ├── (student)/ → /student/dashboard, lessons, my-learning, progress...
-└── (dashboard)/ → /dashboard (shared after login)
+└── (dashboard)/ → /dashboard, /profile, /account/settings
 KHÔNG tạo page ngoài route groups này!
 
 ## Khởi Động Môi Trường Dev
@@ -214,7 +232,24 @@ pnpm --filter @lms/ui build           # khi sửa packages/ui
 - Google OAuth callback path: `/callback` (không phải `/auth/callback`)
 - Presigned URL video expires 1h → dùng PUBLIC_PREFIXES thay thế
 - Unity WebGL build tên project "Builds" → verify Builds.loader.js khi upload
-- Student sidebar menu "Sắp có": Khoá học / Bài giảng / Tiến độ / Cài đặt
+- Role-based redirect: Admin→/admin/dashboard | Instructor→/instructor/dashboard | Student→/student/dashboard
+- /dashboard tự redirect theo role (homeForRole tại src/lib/auth-redirect.ts)
+- Admin + Instructor không còn "Sắp có" (dùng sidebar riêng)
+- /profile + /account/settings: trang cá nhân mọi role (dashboard group)
+- PATCH /users/me: sửa name + avatar (KHÔNG sửa role/email)
+- POST /auth/change-password: cần oldPassword
+- Xoá Ngành: chỉ SUPER_ADMIN | Xoá Môn: ADMIN+ | phải xoá con trước
+- Subject có isDeleted + \_count filter isDeleted=false
+- Audit log: /api/v1/admin/audit-logs (có chữ s)
+- Mailpit: SMTP localhost:1025 | UI http://localhost:8025
+- GEMINI_MODEL=gemini-2.5-flash | LITE=gemini-flash-lite-latest
+- ChromaDB: localhost:8000 API v2 | Collection: lms_docs
+- /verify/:code là PUBLIC page (không cần auth)
+- Grade: Xuất sắc ≥90% | Giỏi ≥80% | Đạt ≥70%
+- At-risk script: node scripts/phase15-seed-at-risk.js [slow|inactive|low|safety|all|restore]
+- lessonId PPE cơ bản: cmnzujyxm000aepnnolixisst
+- Certificate PDF: certificates/{certId}.pdf trong MinIO
+- BullMQ cron at-risk-daily: pattern 0 8 \* \* \* (đã active)
 
 ## Cảnh Báo Encoding UTF-8
 
@@ -253,6 +288,7 @@ ls apps/backend/src/modules/
 ls apps/frontend/src/app/(instructor)/instructor/
 ls apps/frontend/src/app/(admin)/admin/
 ls apps/frontend/src/app/(student)/student/
+ls apps/frontend/src/app/(dashboard)/
 ```
 
 Nếu đã có → **MỞ RỘNG, KHÔNG tạo mới!**
