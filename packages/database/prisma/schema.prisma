@@ -147,6 +147,7 @@ model Subject {
   description  String?
   thumbnailUrl String?
   order        Int      @default(0)
+  isDeleted    Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -154,6 +155,7 @@ model Subject {
   courses    Course[]
 
   @@index([departmentId])
+  @@index([isDeleted])
   @@map("subjects")
 }
 

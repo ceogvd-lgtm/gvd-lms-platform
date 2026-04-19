@@ -128,6 +128,10 @@ export const subjectsApi = {
     body: Partial<{ name: string; description: string; order: number }>,
     token: string,
   ) => api<Subject>(`/subjects/${id}`, { method: 'PATCH', body, token }),
+
+  /** DELETE /subjects/:id — soft delete môn (ADMIN+); reject nếu còn khoá active. */
+  remove: (id: string, token: string) =>
+    api<{ message: string }>(`/subjects/${id}`, { method: 'DELETE', token }),
 };
 
 // =====================================================
