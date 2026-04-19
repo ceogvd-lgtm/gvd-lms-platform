@@ -411,8 +411,23 @@ function DepartmentNode({
       {open && (
         <div className="border-t border-border pl-10 pr-4 py-2">
           {subjectsQuery.isLoading && <Skeleton className="h-8 w-full my-1" />}
+          {/*
+            Empty-state với CTA button — icon `+` trong NodeHeader actions
+            nhỏ và dễ bỏ qua (đặc biệt trên mobile / khi nhiều node). Hiển
+            thị nút rõ ràng ở đây giúp admin mới biết chắc nơi thêm môn.
+          */}
           {subjectsQuery.data?.length === 0 && (
-            <p className="py-3 text-xs italic text-muted">Chưa có môn học nào</p>
+            <div className="flex flex-col items-center gap-2 py-4">
+              <p className="text-xs italic text-muted">Chưa có môn học nào</p>
+              <button
+                type="button"
+                onClick={() => setPanel({ kind: 'subject-new', departmentId: dept.id })}
+                className="inline-flex items-center gap-1.5 rounded-button bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Thêm môn học đầu tiên
+              </button>
+            </div>
           )}
           <ul className="space-y-1">
             {subjectsQuery.data?.map((s) => (
@@ -495,8 +510,19 @@ function SubjectNode({
       {open && (
         <div className="pl-8 py-1">
           {coursesQuery.isLoading && <Skeleton className="h-8 w-full my-1" />}
+          {/* Empty-state CTA — cùng lý do với DepartmentNode empty state */}
           {coursesQuery.data?.data.length === 0 && (
-            <p className="py-2 text-xs italic text-muted">Chưa có khoá học</p>
+            <div className="flex flex-col items-center gap-2 py-3">
+              <p className="text-xs italic text-muted">Chưa có khoá học</p>
+              <button
+                type="button"
+                onClick={() => setPanel({ kind: 'course-new', subjectId: subject.id })}
+                className="inline-flex items-center gap-1.5 rounded-button bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Thêm khoá học đầu tiên
+              </button>
+            </div>
           )}
           <ul className="space-y-1">
             {coursesQuery.data?.data.map((c) => (
