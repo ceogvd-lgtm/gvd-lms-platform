@@ -159,6 +159,7 @@ export class QuestionsService {
     createdAt: Date;
     updatedAt: Date;
     creator?: { id: string; name: string; email: string; avatar: string | null } | null;
+    _count?: { quizQuestions: number };
   }) {
     return {
       id: row.id,
@@ -174,6 +175,9 @@ export class QuestionsService {
       points: row.points,
       createdBy: row.createdBy,
       creator: row.creator ?? null,
+      // Chỉ có khi list() query — findOne / create / update không include _count
+      // (không cần thiết + thêm 1 aggregate query không đáng).
+      usedInQuizCount: row._count?.quizQuestions ?? 0,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
@@ -266,6 +270,10 @@ export class QuestionsService {
         where,
         include: {
           creator: { select: { id: true, name: true, email: true, avatar: true } },
+          // Phase 18 — đếm số quiz đang dùng câu hỏi này để UI hiện badge
+          // "Đang dùng trong N quiz" và disable nút Xoá. Không filter
+          // ở đây vì question_bank không có soft-delete (hard delete only).
+          _count: { select: { quizQuestions: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,

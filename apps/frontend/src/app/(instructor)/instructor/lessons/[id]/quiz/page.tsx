@@ -2,7 +2,7 @@
 
 import { Button, cn } from '@lms/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Eye, HelpCircle, ListOrdered, Target, Trophy } from 'lucide-react';
+import { ArrowLeft, Eye, HelpCircle, ListOrdered, Target, Trash2, Trophy } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useMemo, useState } from 'react';
@@ -88,6 +88,33 @@ export default function InstructorQuizBuilderPage() {
       toast.error(err instanceof ApiError ? err.message : 'Không lưu được thứ tự');
     },
   });
+
+  const deleteQuiz = useMutation({
+    mutationFn: () => quizzesApi.remove(quizQuery.data!.id, accessToken!),
+    onSuccess: () => {
+      toast.success('Đã xoá quiz');
+      // Invalidate cache để trang edit lesson biết quiz không còn.
+      qc.invalidateQueries({ queryKey: ['lesson-quiz', lessonId] });
+      router.push(`/instructor/lessons/${lessonId}/edit`);
+    },
+    onError: (err) => {
+      toast.error(err instanceof ApiError ? err.message : 'Xoá quiz thất bại');
+    },
+  });
+
+  const handleDeleteQuiz = () => {
+    const quiz = quizQuery.data;
+    if (!quiz) return;
+    if (
+      !window.confirm(
+        `Xoá toàn bộ quiz "${quiz.title}"?\n\n` +
+          'Tất cả câu hỏi đã gán sẽ bị gỡ (câu hỏi vẫn còn trong ngân hàng).\n' +
+          'Không thể hoàn tác qua UI.',
+      )
+    )
+      return;
+    deleteQuiz.mutate();
+  };
 
   const updateSettings = useMutation({
     mutationFn: (patch: Partial<Quiz>) =>
@@ -197,10 +224,29 @@ export default function InstructorQuizBuilderPage() {
             </span>
           </div>
         </div>
-        <Button variant="outline" onClick={() => setPreviewOpen(true)}>
-          <Eye className="h-4 w-4" />
-          Xem trước
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setPreviewOpen(true)}>
+            <Eye className="h-4 w-4" />
+            Xem trước
+          </Button>
+          {/*
+            Phase 18 — xoá toàn bộ quiz. Backend DELETE /quizzes/:id cascade
+            xoá mọi QuizQuestion join rows (giữ nguyên QuestionBank) + mọi
+            QuizAttempt liên quan. CLAUDE.md: INSTRUCTOR "Tạo | Sửa | Lưu
+            trữ" KHÔNG có nút xoá bài giảng nhưng quiz thuộc phạm vi
+            assessment nội bộ của instructor → cho phép xoá (matches backend
+            ownership check ở quizzes.controller).
+          */}
+          <Button
+            variant="outline"
+            onClick={handleDeleteQuiz}
+            disabled={deleteQuiz.isPending}
+            className="border-rose-300 text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 dark:border-rose-700/50 dark:text-rose-400"
+          >
+            <Trash2 className="h-4 w-4" />
+            {deleteQuiz.isPending ? 'Đang xoá…' : 'Xoá quiz'}
+          </Button>
+        </div>
       </div>
 
       {/* Two-column layout */}
