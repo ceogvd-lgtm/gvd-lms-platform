@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { OtpInput } from '@/components/ui/otp-input';
 import { formatMMSS, useCountdown } from '@/hooks/use-countdown';
 import { ApiError, authApi } from '@/lib/api';
+import { homeForRole } from '@/lib/auth-redirect';
 import { useAuthStore } from '@/lib/auth-store';
 
 const OTP_TTL_SEC = 10 * 60;
@@ -52,7 +53,7 @@ export default function TwoFactorPage() {
       setSession(res);
       sessionStorage.removeItem('lms-temp-token');
       toast.success('Xác thực thành công');
-      router.push('/');
+      router.push(homeForRole(res.user.role));
     } catch (err) {
       setError(true);
       setOtp('');

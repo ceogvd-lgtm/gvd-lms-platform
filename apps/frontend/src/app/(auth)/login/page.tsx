@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { GoogleButton } from '@/components/auth/google-button';
 import { InputField } from '@/components/ui/input-field';
 import { authApi, isLogin2FA, ApiError } from '@/lib/api';
+import { homeForRole } from '@/lib/auth-redirect';
 import { useAuthStore } from '@/lib/auth-store';
 
 interface FieldErrors {
@@ -49,7 +50,7 @@ export default function LoginPage() {
       } else {
         setSession(res);
         toast.success(`Chào mừng ${res.user.name}!`);
-        router.push('/');
+        router.push(homeForRole(res.user.role));
       }
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Đăng nhập thất bại';

@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { toast } from 'sonner';
 
 import { authApi } from '@/lib/api';
+import { homeForRole } from '@/lib/auth-redirect';
 import { useAuthStore } from '@/lib/auth-store';
 
 /**
@@ -33,7 +34,7 @@ export default function OAuthCallbackPage() {
         const user = await authApi.me(accessToken);
         setSession({ accessToken, refreshToken, user });
         toast.success(`Xin chào ${user.name}`);
-        router.replace('/');
+        router.replace(homeForRole(user.role));
       } catch {
         toast.error('Không lấy được thông tin tài khoản');
         router.replace('/login');
