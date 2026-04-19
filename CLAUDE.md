@@ -250,6 +250,11 @@ pnpm --filter @lms/ui build           # khi sửa packages/ui
 - lessonId PPE cơ bản: cmnzujyxm000aepnnolixisst
 - Certificate PDF: certificates/{certId}.pdf trong MinIO
 - BullMQ cron at-risk-daily: pattern 0 8 \* \* \* (đã active)
+- Storage cleanup A: hook xoá file khi xoá entity (subject/course/lesson/user)
+- Storage cleanup B: cron 03:00 CN + manual trigger
+- POST /api/v1/admin/storage-cleanup [SUPER_ADMIN] → manual trigger
+- AuditLog action=STORAGE_CLEANUP: {scanned, used, orphan, deleted, errors}
+- WebGL cleanup: xoá cả cây content/webgl/<id>/\*
 
 ## Cảnh Báo Encoding UTF-8
 
@@ -267,6 +272,9 @@ pnpm --filter @lms/ui build           # khi sửa packages/ui
 - Socket.io → realtime notification
 - scorm-again → SCORM LRS
 - unzipper + xml2js → parse SCORM/WebGL zip
+- storage.listKeys(prefix) → list MinIO keys by prefix
+- extractMinioKey(url) → parse URL về MinIO key
+  (tại apps/backend/src/common/storage/storage.utils.ts)
 
 **Frontend:**
 
