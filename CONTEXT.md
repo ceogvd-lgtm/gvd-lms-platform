@@ -4,7 +4,7 @@ Cập nhật ngày: 18/04/2026
 
 ## ĐANG LÀM
 
-Phase 17 — AI Learning Assistant (Gemini)
+Phase 18 — Testing, Performance & Deployment
 
 ## ĐÃ HOÀN THÀNH
 
@@ -233,6 +233,45 @@ Phase 17 — AI Learning Assistant (Gemini)
 - Commits: 2eba9cb | Merge: 13cdc09
 - Xong ngày: 18/04/2026
 
+### ✅ Phase 17 — AI Learning Assistant (Gemini)
+
+- Database: +4 models (AiRecommendation, AiChatMessage, AiQuotaLog, AiSuggestedQuestions)
+  migration 20260418120000
+- 7 endpoints mới:
+  - POST /ai/chat [AUTH, STUDENT+] → SSE streaming
+  - GET /ai/suggestions/:lessonId [AUTH]
+  - GET /ai/recommendations [AUTH, STUDENT+]
+  - PATCH /ai/recommendations/:id/read [AUTH, STUDENT+]
+  - POST /ai/index-lesson [INSTRUCTOR own / ADMIN+]
+  - PATCH /ai/chat/:messageId/rating [AUTH]
+  - GET /ai/health [ADMIN+]
+- Models Gemini đang dùng:
+  - gemini-2.5-flash → chat chính (đã verify hoạt động)
+  - gemini-flash-lite-latest → recommendations + weekly report
+  - text-embedding-004 → RAG embeddings
+  - KHÔNG dùng gemini-2.0-flash (429) hoặc gemini-1.5-flash (404 retired)
+- RAG Pipeline: ChromaDB + Gemini embeddings
+  - Index PDF bài học → ChromaDB
+  - Retrieve context khi student hỏi → inject vào prompt
+  - Graceful fallback nếu ChromaDB offline
+- Adaptive Learning: BullMQ daily 1AM
+  - Phân tích điểm yếu → tạo AiRecommendation
+  - Weekly report: BullMQ Monday 8AM → email học viên
+- Rate limit: GEMINI_QUEUE max 10 req/phút | AiQuotaLog track 1500/ngày
+- ChromaDB: Docker container lms-chromadb-dev port 8000 (API v2)
+- Frontend mới:
+  - chat-widget.tsx (floating 380×520, fullscreen <640px, SSE stream)
+  - recommendation-cards.tsx (Row 7 /student/dashboard)
+  - suggested-questions.tsx (chips trong chat widget)
+  - ai-health-panel.tsx (tab "AI & Quota" trong /admin/settings)
+- Pages mở rộng:
+  - /student/lessons/:id → chat widget + suggested questions
+  - /student/dashboard → Row 7 AI recommendations
+  - /admin/settings → tab "AI & Quota"
+- 34 suites / 319 tests PASS | 31 routes build OK
+- Commits: claude/competent-knuth-0aa182 | Merge: feat(ai): phase 17 complete
+- Xong ngày: 18/04/2026
+
 ## LƯU Ý QUAN TRỌNG
 
 - Docker port 5433 (không phải 5432)
@@ -246,7 +285,7 @@ Phase 17 — AI Learning Assistant (Gemini)
 - Hydration: layout dùng useHasHydrated() trước khi check role
 - TipTap body lưu JSON ProseMirror — auto-save 30s
 - KHÔNG dùng curl từ Git Bash Windows để POST tiếng Việt
-- Main branch đã merge đủ Phase 01-16 (commit: 13cdc09)
+- Main branch đã merge đủ Phase 01-17
 - Unity WebGL tên project "Builds":
   Builds.loader.js / Builds.data / Builds.framework.js / Builds.wasm
 - LMS Bridge: SendMessage('LMSBridge', 'ReceiveConfig', JSON.stringify(config))
@@ -267,16 +306,21 @@ Phase 17 — AI Learning Assistant (Gemini)
 - BullMQ cron at-risk-daily: pattern 0 8 \* \* \* (đã active)
 - Certificate PDF: certificates/{certId}.pdf trong MinIO
 - GEMINI_API_KEY đã có trong .env | Model: gemini-2.5-flash
-- GEMINI_MODEL=gemini-2.5-flash (gemini-2.0-flash không có free quota)
-- Phase 17: ChromaDB cần thêm vào docker-compose.dev.yml
-- Phase 17: RAG chatbot dùng lesson content + PDF attachments làm context
-- Phase 17: Rate limit protection qua BullMQ queue (free tier 1500 req/ngày)
+- GEMINI_MODEL=gemini-2.5-flash | GEMINI_MODEL_LITE=gemini-flash-lite-latest
+- GEMINI_MODEL_EMBEDDING=text-embedding-004
+- ChromaDB: localhost:8000 | API v2 (/api/v2/) | Collection: lms_docs
+- AI quota: 1500 req/ngày free tier | Track qua AiQuotaLog
+- Phase 18: VPS Hetzner CX22 Ubuntu 22.04 | Domain: gvdsoft.com.vn
+- Phase 18: Docker production + SSL Let's Encrypt + CI/CD
 - 31 routes hiện tại
+- Role-based redirect: Admin→/admin/dashboard | Instructor→/instructor/dashboard | Student→/student/dashboard
+- /dashboard tự redirect theo role (homeForRole helper tại apps/frontend/src/lib/auth-redirect.ts)
+- Không còn "Sắp có" với Admin + Instructor (shared dashboard chỉ còn là fallback)
 
 ## LỆNH ĐÃ VERIFY
 
 ```bash
-pnpm --filter @lms/backend test        # 31 suites, 290 tests PASS
+pnpm --filter @lms/backend test        # 34 suites, 319 tests PASS
 pnpm --filter @lms/frontend build      # 31 routes built
 pnpm --filter @lms/database exec tsx prisma/seed-demo.ts  # seed demo data
 ```
