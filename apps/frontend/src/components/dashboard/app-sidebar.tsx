@@ -4,7 +4,6 @@ import { Sidebar, type SidebarItem } from '@lms/ui';
 import {
   BarChart3,
   BookOpen,
-  GraduationCap,
   Home,
   LayoutGrid,
   LogOut,
@@ -34,9 +33,15 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
     // Phase 14 wires up the student routes. "Tổng quan" points at the
     // new /student/dashboard for STUDENT + routes back to the shared
     // /dashboard demo for other roles so admin/instructor visuals stay
-    // unchanged. "Lộ trình" and "Tiến độ" are student-only — they
-    // degrade to "Sắp có" for non-students so the same sidebar works
-    // everywhere. Cài đặt stays as "Sắp có" (Phase 15+).
+    // unchanged. "Khoá học" và "Tiến độ" là student-only — ẩn hẳn cho
+    // non-student để sidebar không rối với nút disabled.
+    //
+    // "Bài giảng" đã được xoá hoàn toàn: per-lesson deep-link cần id nên
+    // không thể làm menu tĩnh; user vào lesson qua "Khoá học".
+    //
+    // Từ khi có RoleAwareSidebar, AppSidebar chỉ render cho STUDENT +
+    // fallback — các item "Sắp có" được loại bỏ luôn, không còn cần rẽ
+    // nhánh non-student trong từng item.
     const isStudent = role === 'STUDENT';
     const base: SidebarItem[] = [
       {
@@ -45,33 +50,24 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
         icon: Home,
         active: isStudent ? isActive('/student/dashboard') : isActive('/dashboard'),
       },
-      {
-        label: 'Khoá học',
-        // STUDENT: show enrolled courses via dashboard card "Khoá học" block.
-        // Others: Sắp có (courses catalog page for public browsing — Phase 15+).
-        ...(isStudent
-          ? {
-              href: '/student/my-learning',
-              icon: BookOpen,
-              active: isActive('/student/my-learning'),
-            }
-          : { icon: BookOpen, disabled: true, disabledReason: 'Sắp có' }),
-      },
-      {
-        label: 'Bài giảng',
-        // Per-lesson deeplinks require an id. Leave as "Sắp có" everywhere —
-        // the "Khoá học" entry above is the way into the lesson viewer.
-        icon: GraduationCap,
-        disabled: true,
-        disabledReason: 'Sắp có',
-      },
-      {
-        label: 'Tiến độ',
-        ...(isStudent
-          ? { href: '/student/progress', icon: BarChart3, active: isActive('/student/progress') }
-          : { icon: BarChart3, disabled: true, disabledReason: 'Sắp có' }),
-      },
     ];
+
+    if (isStudent) {
+      base.push(
+        {
+          label: 'Khoá học',
+          href: '/student/my-learning',
+          icon: BookOpen,
+          active: isActive('/student/my-learning'),
+        },
+        {
+          label: 'Tiến độ',
+          href: '/student/progress',
+          icon: BarChart3,
+          active: isActive('/student/progress'),
+        },
+      );
+    }
 
     if (role === 'ADMIN' || role === 'SUPER_ADMIN') {
       base.push({
@@ -101,11 +97,12 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
       });
     }
 
+    // Cài đặt cá nhân — trang thật tại /account/settings (Phase 18 profile flow).
     base.push({
       label: 'Cài đặt',
+      href: '/account/settings',
       icon: Settings,
-      disabled: true,
-      disabledReason: 'Sắp có',
+      active: isActive('/account/settings'),
     });
 
     return base;
