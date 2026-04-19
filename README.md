@@ -8,16 +8,16 @@ Monorepo quản lý bằng **pnpm workspaces** + **Turborepo**. Scope Phase 01 =
 
 ## Tech Stack
 
-| Layer       | Stack                                                                 |
-| ----------- | --------------------------------------------------------------------- |
-| Backend     | NestJS 10 + TypeScript + Prisma + PostgreSQL + Redis                  |
-| Frontend    | Next.js 14 (App Router) + Tailwind CSS + shadcn/ui + Framer Motion    |
-| State       | Zustand (client) + TanStack Query (server)                            |
-| Auth        | JWT (15m/7d) + Google OAuth2 + 2FA email OTP                          |
-| Storage     | MinIO (S3-compatible)                                                 |
-| Email       | Nodemailer + BullMQ queue                                             |
-| AI          | Google Gemini (gemini-2.0-flash) + ChromaDB                           |
-| Infra       | Docker Compose + GitHub Actions + Turborepo cache                     |
+| Layer    | Stack                                                              |
+| -------- | ------------------------------------------------------------------ |
+| Backend  | NestJS 10 + TypeScript + Prisma + PostgreSQL + Redis               |
+| Frontend | Next.js 14 (App Router) + Tailwind CSS + shadcn/ui + Framer Motion |
+| State    | Zustand (client) + TanStack Query (server)                         |
+| Auth     | JWT (15m/7d) + Google OAuth2 + 2FA email OTP                       |
+| Storage  | MinIO (S3-compatible)                                              |
+| Email    | Nodemailer + BullMQ queue                                          |
+| AI       | Google Gemini (gemini-2.0-flash) + ChromaDB                        |
+| Infra    | Docker Compose + GitHub Actions + Turborepo cache                  |
 
 ---
 
@@ -53,24 +53,49 @@ lms-platform/
 
 ## Yêu cầu môi trường
 
-| Tool    | Version  | Cài đặt                                                               |
-| ------- | -------- | --------------------------------------------------------------------- |
-| Node.js | ≥ 20     | https://nodejs.org — khuyến nghị dùng `nvm` hoặc `volta`              |
-| pnpm    | ≥ 9      | `npm install -g pnpm@9` hoặc `corepack enable && corepack use pnpm@9` |
-| Docker  | ≥ 24     | https://docs.docker.com/get-docker/ (kèm Docker Compose v2)           |
-| Git     | ≥ 2.30   | https://git-scm.com                                                   |
+| Tool    | Version | Cài đặt                                                               |
+| ------- | ------- | --------------------------------------------------------------------- |
+| Node.js | ≥ 20    | https://nodejs.org — khuyến nghị dùng `nvm` hoặc `volta`              |
+| pnpm    | ≥ 9     | `npm install -g pnpm@9` hoặc `corepack enable && corepack use pnpm@9` |
+| Docker  | ≥ 24    | https://docs.docker.com/get-docker/ (kèm Docker Compose v2)           |
+| Git     | ≥ 2.30  | https://git-scm.com                                                   |
 
 ---
 
-## Setup nhanh (script tự động)
+## Setup nhanh (script tự động, cross-platform)
 
 ```bash
-git clone <repo-url> lms-platform
+git clone https://github.com/ceogvd-lgtm/gvd-lms-platform.git lms-platform
 cd lms-platform
-bash scripts/setup.sh
+pnpm install           # cài pnpm trước nếu chưa có: npm i -g pnpm
+pnpm run restore
 ```
 
-Script sẽ: kiểm tra prerequisites → `pnpm install` → copy `.env` → chạy docker stack → generate Prisma client → chạy migration → cài husky hooks.
+Script `scripts/restore.js` (chạy được cả Windows/macOS/Linux) sẽ:
+
+1. Kiểm tra prerequisites (Node ≥ 20, pnpm ≥ 9, Docker daemon)
+2. Copy `.env.example` → `.env` nếu chưa có + **auto-gen JWT_SECRET/REFRESH_TOKEN_SECRET** 64 ký tự random
+3. `pnpm install --frozen-lockfile`
+4. Generate Prisma client
+5. Khởi động Docker stack (postgres/redis/minio/mailpit/chromadb)
+6. Đợi Postgres ready (pg_isready loop)
+7. Chạy `prisma migrate deploy`
+8. Seed super admin + demo data (idempotent)
+9. In URL + tài khoản test
+
+Flags:
+
+```bash
+pnpm run restore -- --skip-install   # bỏ qua pnpm install
+pnpm run restore -- --skip-seed      # bỏ qua seed demo
+pnpm run restore -- --skip-docker    # khi Docker đã chạy sẵn
+```
+
+Sau khi restore xong, chạy `pnpm dev`.
+
+> Sau khi chạy `restore`, ĐIỀN các secret còn trống trong `.env`: `GOOGLE_CLIENT_ID/SECRET`, `GEMINI_API_KEY`, `SMTP_*` — nếu không dùng Google OAuth/AI thì có thể để trống.
+
+Bản legacy `bash scripts/setup.sh` (Linux/Mac only) vẫn còn dùng được — trỏ `restore.js` chỉ là khuyến nghị mới.
 
 ---
 
@@ -146,19 +171,19 @@ pnpm clean                              # xoá build outputs + node_modules
 
 Tham khảo [`.env.example`](./.env.example). Các biến quan trọng:
 
-| Biến                                 | Mục đích                                     |
-| ------------------------------------ | -------------------------------------------- |
-| `DATABASE_URL`                       | Postgres connection string                   |
-| `REDIS_URL`                          | Redis cho cache + BullMQ                     |
-| `JWT_SECRET` / `REFRESH_TOKEN_SECRET` | Ký JWT access / refresh                      |
-| `GOOGLE_CLIENT_ID` / `_SECRET`       | Google OAuth2                                |
-| `SMTP_*`                             | Gửi email OTP / thông báo                    |
-| `MINIO_*`                            | S3-compatible object storage                 |
-| `GEMINI_API_KEY`                     | AI (primary)                                 |
-| `OPENAI_API_KEY`                     | AI fallback                                  |
-| `CHROMA_HOST` / `_PORT`              | Vector store                                 |
-| `NEXT_PUBLIC_API_URL`                | URL API mà frontend gọi                      |
-| `ALLOWED_ORIGINS`                    | CORS whitelist (comma-separated)             |
+| Biến                                  | Mục đích                         |
+| ------------------------------------- | -------------------------------- |
+| `DATABASE_URL`                        | Postgres connection string       |
+| `REDIS_URL`                           | Redis cho cache + BullMQ         |
+| `JWT_SECRET` / `REFRESH_TOKEN_SECRET` | Ký JWT access / refresh          |
+| `GOOGLE_CLIENT_ID` / `_SECRET`        | Google OAuth2                    |
+| `SMTP_*`                              | Gửi email OTP / thông báo        |
+| `MINIO_*`                             | S3-compatible object storage     |
+| `GEMINI_API_KEY`                      | AI (primary)                     |
+| `OPENAI_API_KEY`                      | AI fallback                      |
+| `CHROMA_HOST` / `_PORT`               | Vector store                     |
+| `NEXT_PUBLIC_API_URL`                 | URL API mà frontend gọi          |
+| `ALLOWED_ORIGINS`                     | CORS whitelist (comma-separated) |
 
 ---
 
@@ -206,13 +231,13 @@ Mọi admin action backend phải đi qua middleware `checkAdminRules()`. Fronte
 
 ## Troubleshooting
 
-| Triệu chứng                                 | Xử lý                                                                                     |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `pnpm install` lỗi `ERR_PNPM_...`           | `rm -rf node_modules && pnpm store prune && pnpm install`                                  |
-| Port 5432 / 6379 / 9000 đã dùng             | Tắt service đang chạy hoặc sửa port trong `docker/docker-compose.dev.yml`                  |
-| Prisma: `Can't reach database server`       | Kiểm tra `pnpm docker:dev` đã chạy; verify `DATABASE_URL` trong `.env`                     |
-| `Cannot find module '@lms/types'`           | Chạy `pnpm install` từ root để symlink workspace packages                                  |
-| Husky hook không chạy                       | `pnpm prepare` rồi `chmod +x .husky/pre-commit .husky/commit-msg`                          |
+| Triệu chứng                           | Xử lý                                                                     |
+| ------------------------------------- | ------------------------------------------------------------------------- |
+| `pnpm install` lỗi `ERR_PNPM_...`     | `rm -rf node_modules && pnpm store prune && pnpm install`                 |
+| Port 5432 / 6379 / 9000 đã dùng       | Tắt service đang chạy hoặc sửa port trong `docker/docker-compose.dev.yml` |
+| Prisma: `Can't reach database server` | Kiểm tra `pnpm docker:dev` đã chạy; verify `DATABASE_URL` trong `.env`    |
+| `Cannot find module '@lms/types'`     | Chạy `pnpm install` từ root để symlink workspace packages                 |
+| Husky hook không chạy                 | `pnpm prepare` rồi `chmod +x .husky/pre-commit .husky/commit-msg`         |
 
 ---
 
