@@ -11,6 +11,7 @@ import {
   Input,
 } from '@lms/ui';
 import { LogOut, Menu, Search, Settings, User as UserIcon } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 import { NotificationBell } from '@/components/notifications/notification-bell';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -23,6 +24,7 @@ interface AppHeaderProps {
 export function AppHeader({ onToggleSidebar }: AppHeaderProps) {
   const user = useAuthStore((s) => s.user);
   const clear = useAuthStore((s) => s.clear);
+  const router = useRouter();
 
   const initials = user?.name
     ? user.name
@@ -87,32 +89,18 @@ export function AppHeader({ onToggleSidebar }: AppHeaderProps) {
               </>
             )}
             {/*
-              Profile + Settings pages aren't implemented yet (Phase 14 scope).
-              Render them `disabled` with a "Sắp có" hint so the affordance is
-              still discoverable without letting the user click into an empty
-              route. The wrapping <span title> is there because Radix's
-              disabled DropdownMenuItem applies `pointer-events: none`, which
-              silently eats hover events — the span catches the hover and the
-              browser shows its native tooltip on top.
+              Profile + Settings đã triển khai — bấm vào dẫn sang route tương
+              ứng. Layout (dashboard) đã có auth guard nên không cần check
+              lại ở đây.
             */}
-            <span title="Sắp có — tính năng Phase 14">
-              <DropdownMenuItem disabled>
-                <UserIcon className="h-4 w-4" />
-                Hồ sơ
-                <span className="ml-auto text-[10px] uppercase tracking-wider text-muted">
-                  Sắp có
-                </span>
-              </DropdownMenuItem>
-            </span>
-            <span title="Sắp có — tính năng Phase 14">
-              <DropdownMenuItem disabled>
-                <Settings className="h-4 w-4" />
-                Cài đặt
-                <span className="ml-auto text-[10px] uppercase tracking-wider text-muted">
-                  Sắp có
-                </span>
-              </DropdownMenuItem>
-            </span>
+            <DropdownMenuItem onSelect={() => router.push('/profile')}>
+              <UserIcon className="h-4 w-4" />
+              Hồ sơ
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => router.push('/account/settings')}>
+              <Settings className="h-4 w-4" />
+              Cài đặt
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               destructive

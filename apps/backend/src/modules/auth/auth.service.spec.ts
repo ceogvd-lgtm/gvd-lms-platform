@@ -109,4 +109,64 @@ describe('AuthService', () => {
       expect(res.message).toContain('Đăng ký thành công');
     });
   });
+
+  describe('changePassword', () => {
+    // bcrypt hash của "OldPass1!" — pre-computed offline để test
+    // chạy bcrypt.compare thật (không mock), đảm bảo flow verify
+    // password chạy end-to-end.
+    const OLD_HASH = '$2b$12$Iz/ACpdSaRjtSYMSeLVri.4W.UNgHuJlNo.k2FbFPyrWgR/.ApHtG';
+
+    beforeEach(() => {
+      prismaMock.client.user.findUnique.mockResolvedValue({
+        id: 'u1',
+        email: 'a@b.com',
+        password: OLD_HASH,
+      });
+      prismaMock.client.user.update.mockResolvedValue({ id: 'u1' });
+    });
+
+    it('đổi mật khẩu thành công với oldPassword đúng', async () => {
+      const res = await service.changePassword('u1', {
+        oldPassword: 'OldPass1!',
+        newPassword: 'NewPass1!',
+      });
+
+      expect(res.message).toContain('thành công');
+      // Password lưu xuống DB phải là hash (không phải plaintext)
+      const updateCall = prismaMock.client.user.update.mock.calls[0][0];
+      expect(updateCall.where).toEqual({ id: 'u1' });
+      expect(updateCall.data.password).not.toBe('NewPass1!');
+      expect(updateCall.data.password).toMatch(/^\$2[aby]\$/);
+    });
+
+    it('ném UnauthorizedException khi oldPassword sai', async () => {
+      await expect(
+        service.changePassword('u1', {
+          oldPassword: 'WrongPass1!',
+          newPassword: 'NewPass1!',
+        }),
+      ).rejects.toThrow('Mật khẩu cũ không đúng');
+      expect(prismaMock.client.user.update).not.toHaveBeenCalled();
+    });
+
+    it('ném BadRequestException khi newPassword trùng oldPassword', async () => {
+      await expect(
+        service.changePassword('u1', {
+          oldPassword: 'OldPass1!',
+          newPassword: 'OldPass1!',
+        }),
+      ).rejects.toThrow('phải khác mật khẩu cũ');
+      expect(prismaMock.client.user.update).not.toHaveBeenCalled();
+    });
+
+    it('ném UnauthorizedException khi user không tồn tại', async () => {
+      prismaMock.client.user.findUnique.mockResolvedValueOnce(null);
+      await expect(
+        service.changePassword('ghost', {
+          oldPassword: 'X',
+          newPassword: 'NewPass1!',
+        }),
+      ).rejects.toThrow('không tồn tại');
+    });
+  });
 });

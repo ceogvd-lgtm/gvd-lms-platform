@@ -55,9 +55,7 @@ const nextConfig = {
     return [
       {
         source: '/:path*',
-        headers: [
-          { key: 'ngrok-skip-browser-warning', value: 'true' },
-        ],
+        headers: [{ key: 'ngrok-skip-browser-warning', value: 'true' }],
       },
     ];
   },

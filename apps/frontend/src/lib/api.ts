@@ -199,6 +199,49 @@ export const authApi = {
       emailVerified: boolean;
       is2FAEnabled: boolean;
     }>('/auth/me', { token: accessToken }),
+
+  /** POST /auth/change-password — đổi mật khẩu, require oldPassword. */
+  changePassword: (body: { oldPassword: string; newPassword: string }, accessToken: string) =>
+    api<{ message: string }>('/auth/change-password', {
+      method: 'POST',
+      body,
+      token: accessToken,
+    }),
+
+  /** POST /auth/2fa/toggle — bật/tắt 2FA email OTP, require password xác nhận. */
+  toggle2FA: (body: { enable: boolean; password: string }, accessToken: string) =>
+    api<{ message: string; is2FAEnabled: boolean }>('/auth/2fa/toggle', {
+      method: 'POST',
+      body,
+      token: accessToken,
+    }),
+};
+
+// ---------- Users API surface (self-service) ----------
+// Tách biệt với `adminApi` (quản lý user khác) — mọi role authenticated
+// đều gọi được 2 endpoint dưới đây cho chính mình.
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  name: string;
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'INSTRUCTOR' | 'STUDENT';
+  avatar: string | null;
+  createdAt: string;
+  emailVerified: boolean;
+  is2FAEnabled: boolean;
+}
+
+export const usersApi = {
+  /** GET /users/me — full profile + createdAt (khác /auth/me: thêm createdAt). */
+  getMe: (accessToken: string) => api<UserProfile>('/users/me', { token: accessToken }),
+
+  /**
+   * PATCH /users/me — sửa tên hoặc avatar URL.
+   * Các field khác (email/role/password/…) bị ValidationPipe strip.
+   */
+  updateMe: (body: { name?: string; avatar?: string }, accessToken: string) =>
+    api<UserProfile>('/users/me', { method: 'PATCH', body, token: accessToken }),
 };
 
 // Backend returns one of these shapes from /auth/login
