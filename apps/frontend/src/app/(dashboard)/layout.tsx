@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { AppHeader } from '@/components/dashboard/app-header';
-import { AppSidebar } from '@/components/dashboard/app-sidebar';
+import { RoleAwareSidebar } from '@/components/dashboard/role-aware-sidebar';
 import { useAuthStore, useHasHydrated } from '@/lib/auth-store';
 
 /**
@@ -54,7 +54,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="flex min-h-screen bg-background">
       {/* Desktop sidebar */}
       <div className="hidden lg:block">
-        <AppSidebar />
+        <RoleAwareSidebar />
       </div>
 
       {/* Mobile drawer */}
@@ -75,7 +75,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               exit={{ x: -280 }}
               transition={{ duration: 0.25, ease: 'easeOut' }}
             >
-              <AppSidebar />
+              <RoleAwareSidebar />
             </motion.div>
           </>
         )}
