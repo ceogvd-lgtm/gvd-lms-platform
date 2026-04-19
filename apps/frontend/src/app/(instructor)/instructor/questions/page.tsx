@@ -330,6 +330,14 @@ function QuestionRow({
   onDelete: () => void;
   disabled?: boolean;
 }) {
+  // Phase 18 — câu hỏi đang được quiz dùng không xoá được (FK restrict).
+  // `usedInQuizCount` từ list API; undefined = endpoint cũ chưa update,
+  // coi như 0 để không block nhầm.
+  const inUseCount = question.usedInQuizCount ?? 0;
+  const isInUse = inUseCount > 0;
+  const deleteDisabled = disabled || isInUse;
+  const deleteTooltip = isInUse ? `Gỡ câu hỏi khỏi ${inUseCount} quiz trước khi xoá` : undefined;
+
   return (
     <div className="flex items-start gap-3 rounded-card border border-border bg-surface p-4 transition-colors hover:border-primary/50">
       <div className="min-w-0 flex-1 space-y-2">
@@ -338,6 +346,17 @@ function QuestionRow({
           <QuestionTypeBadge type={question.type} />
           <DifficultyBadge difficulty={question.difficulty} />
           <span>· {question.points} điểm</span>
+          {/* Usage badge — xanh khi đang dùng, xám khi chưa. Giúp instructor
+              biết câu nào có thể xoá được + câu nào phải gỡ khỏi quiz trước. */}
+          {isInUse ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
+              Đang dùng trong {inUseCount} quiz
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-500/10 px-2 py-0.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+              Chưa dùng
+            </span>
+          )}
           {question.tags.length > 0 && (
             <span className="truncate">
               · Tags: <span className="font-semibold">{question.tags.join(', ')}</span>
@@ -371,8 +390,10 @@ function QuestionRow({
         <button
           type="button"
           onClick={onDelete}
-          disabled={disabled}
-          className="inline-flex h-8 items-center gap-1 rounded-button bg-surface-2 px-2.5 text-xs font-semibold text-muted transition-colors hover:bg-rose-500/10 hover:text-rose-500 disabled:opacity-50"
+          disabled={deleteDisabled}
+          title={deleteTooltip}
+          // Per CLAUDE.md "disable button + tooltip giải thích (không ẩn)".
+          className="inline-flex h-8 items-center gap-1 rounded-button bg-surface-2 px-2.5 text-xs font-semibold text-muted transition-colors hover:bg-rose-500/10 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-surface-2 disabled:hover:text-muted"
         >
           <Trash2 className="h-3.5 w-3.5" />
           Xoá

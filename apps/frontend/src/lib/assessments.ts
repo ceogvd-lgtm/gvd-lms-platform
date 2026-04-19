@@ -34,6 +34,12 @@ export interface QuestionBank {
   points: number;
   createdBy: string;
   creator: { id: string; name: string; email: string; avatar: string | null } | null;
+  /**
+   * Phase 18 — số quiz đang reference câu hỏi này (qua bảng QuizQuestion).
+   * Chỉ trả về ở endpoint list (); findOne/create/update không include.
+   * UI dùng để hiện badge "Đang dùng trong N quiz" + disable nút Xoá.
+   */
+  usedInQuizCount?: number;
   createdAt: string;
   updatedAt: string;
 }
