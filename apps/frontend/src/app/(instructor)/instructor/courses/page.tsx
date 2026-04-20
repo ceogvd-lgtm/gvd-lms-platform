@@ -2,7 +2,7 @@
 
 import { Badge, Button } from '@lms/ui';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, Edit, Eye, Grid3x3, List, Plus, Send } from 'lucide-react';
+import { Archive, Edit, Eye, Grid3x3, List, Plus, RotateCcw, Send } from 'lucide-react';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -89,6 +89,28 @@ export default function InstructorCoursesPage() {
       invalidate();
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Gửi duyệt thất bại';
+      toast.error(msg);
+    }
+  };
+
+  // Phase 18 — huỷ gửi duyệt (PENDING_REVIEW → DRAFT). Instructor dùng
+  // khi phát hiện lỗi sau khi submit, cần sửa lại. Admin chưa review
+  // thì không mất gì.
+  const handleWithdraw = async (course: Course) => {
+    if (
+      !confirm(
+        `Huỷ gửi duyệt "${course.title}"?\n\n` +
+          'Khoá học quay về trạng thái Nháp để tiếp tục chỉnh sửa cấu trúc. Khi xong, gửi duyệt lại.',
+      )
+    ) {
+      return;
+    }
+    try {
+      await coursesApi.updateStatus(course.id, 'WITHDRAW', accessToken!);
+      toast.success('Đã huỷ gửi duyệt — khoá học về trạng thái Nháp');
+      invalidate();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Huỷ gửi duyệt thất bại';
       toast.error(msg);
     }
   };
@@ -210,6 +232,7 @@ export default function InstructorCoursesPage() {
               course={c}
               onArchive={handleArchive}
               onSubmitForReview={handleSubmitForReview}
+              onWithdraw={handleWithdraw}
               editHref={`/instructor/courses/${c.id}/edit`}
             />
           ))}
@@ -253,13 +276,28 @@ export default function InstructorCoursesPage() {
                         <Eye className="h-3.5 w-3.5" />
                         Xem
                       </Link>
-                      <Link
-                        href={`/instructor/courses/${c.id}/edit`}
-                        className="inline-flex h-8 items-center gap-1 rounded-button bg-primary/10 px-2.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
-                      >
-                        <Edit className="h-3.5 w-3.5" />
-                        Sửa
-                      </Link>
+                      {/* Phase 18 — "Sửa" khoá khi PENDING_REVIEW; thay bằng
+                          "Huỷ gửi duyệt" để instructor rút trước khi sửa. */}
+                      {c.status !== 'PENDING_REVIEW' && (
+                        <Link
+                          href={`/instructor/courses/${c.id}/edit`}
+                          className="inline-flex h-8 items-center gap-1 rounded-button bg-primary/10 px-2.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                          Sửa
+                        </Link>
+                      )}
+                      {c.status === 'PENDING_REVIEW' && (
+                        <button
+                          type="button"
+                          onClick={() => handleWithdraw(c)}
+                          className="inline-flex h-8 items-center gap-1 rounded-button bg-amber-500/10 px-2.5 text-xs font-semibold text-amber-600 hover:bg-amber-500/20 transition-colors dark:text-amber-400"
+                          title="Huỷ gửi duyệt để tiếp tục chỉnh sửa"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          Huỷ gửi duyệt
+                        </button>
+                      )}
                       {c.status === 'DRAFT' && (
                         <button
                           type="button"
