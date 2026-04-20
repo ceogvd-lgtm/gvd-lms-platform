@@ -43,6 +43,129 @@ const VALID_TYPES: QuestionType[] = ['SINGLE_CHOICE', 'MULTI_CHOICE', 'TRUE_FALS
 const VALID_DIFFICULTIES: Difficulty[] = ['EASY', 'MEDIUM', 'HARD'];
 
 /**
+ * Phase 18 — mapping từ tên cột tiếng Việt / tiếng Anh lowercase
+ * về canonical key mà parser cũ đang đọc. Cho phép giảng viên dán
+ * file Excel gốc tiếng Việt mà không cần rename header.
+ *
+ * Key LUÔN lowercase + trim. Value là canonical key parser cũ dùng
+ * (Question, Type, OptionA…). KHÔNG thay đổi parser cũ — chỉ sinh
+ * thêm các alias entries trong `raw` object trước khi parser đọc.
+ */
+const COLUMN_MAP: Record<string, string> = {
+  // --- Tiếng Anh ---
+  question: 'Question',
+  type: 'Type',
+  optiona: 'OptionA',
+  optionb: 'OptionB',
+  optionc: 'OptionC',
+  optiond: 'OptionD',
+  optione: 'OptionE',
+  optionf: 'OptionF',
+  'option a': 'OptionA',
+  'option b': 'OptionB',
+  'option c': 'OptionC',
+  'option d': 'OptionD',
+  'option e': 'OptionE',
+  'option f': 'OptionF',
+  correctanswer: 'CorrectAnswer',
+  'correct answer': 'CorrectAnswer',
+  difficulty: 'Difficulty',
+  points: 'Points',
+  tags: 'Tags',
+  explanation: 'Explanation',
+  // --- Tiếng Việt ---
+  'câu hỏi': 'Question',
+  'nội dung': 'Question',
+  'nội dung câu hỏi': 'Question',
+  loại: 'Type',
+  'loại câu hỏi': 'Type',
+  'đáp án a': 'OptionA',
+  'đáp án b': 'OptionB',
+  'đáp án c': 'OptionC',
+  'đáp án d': 'OptionD',
+  'đáp án e': 'OptionE',
+  'đáp án f': 'OptionF',
+  'lựa chọn a': 'OptionA',
+  'lựa chọn b': 'OptionB',
+  'lựa chọn c': 'OptionC',
+  'lựa chọn d': 'OptionD',
+  'đáp án đúng': 'CorrectAnswer',
+  đúng: 'CorrectAnswer',
+  'độ khó': 'Difficulty',
+  điểm: 'Points',
+  'điểm số': 'Points',
+  thẻ: 'Tags',
+  'chủ đề': 'Tags',
+  'giải thích': 'Explanation',
+};
+
+function normalizeHeader(raw: string): string {
+  const key = raw.trim().toLowerCase();
+  return COLUMN_MAP[key] ?? raw.trim();
+}
+
+/**
+ * Tạo bản row mới với các cột đã đổi về canonical header. Giữ nguyên
+ * cả key gốc (để nếu header lạ không bị drop) để parser cũ vẫn truy
+ * cập được. Gọi 1 lần/row ở đầu `forEach`.
+ */
+function remapRowHeaders(raw: Record<string, string | number>): Record<string, string | number> {
+  const out: Record<string, string | number> = { ...raw };
+  for (const [origKey, value] of Object.entries(raw)) {
+    const canonical = normalizeHeader(origKey);
+    if (canonical !== origKey && out[canonical] === undefined) {
+      out[canonical] = value;
+    }
+  }
+  return out;
+}
+
+/**
+ * Map độ khó tiếng Việt / tiếng Anh (lowercase, không dấu-insensitive
+ * chỉ ở mức có dấu vì header file mẫu sẽ dùng có dấu).
+ */
+const DIFFICULTY_MAP: Record<string, Difficulty> = {
+  dễ: 'EASY',
+  de: 'EASY', // không dấu
+  easy: 'EASY',
+  'trung bình': 'MEDIUM',
+  'trung binh': 'MEDIUM',
+  medium: 'MEDIUM',
+  tb: 'MEDIUM',
+  khó: 'HARD',
+  kho: 'HARD',
+  hard: 'HARD',
+};
+
+function normalizeDifficulty(raw: string): Difficulty | null {
+  const key = raw.trim().toLowerCase();
+  if (!key) return null;
+  if (DIFFICULTY_MAP[key]) return DIFFICULTY_MAP[key]!;
+  // Backward-compat với parser cũ: giá trị đã uppercase (EASY/MEDIUM/HARD).
+  const up = key.toUpperCase();
+  if (VALID_DIFFICULTIES.includes(up as Difficulty)) return up as Difficulty;
+  return null;
+}
+
+/**
+ * Map số 1..6 sang chữ A..F cho cột CorrectAnswer của SINGLE/MULTI.
+ * Ví dụ cell "1,3" → ['A', 'C']. Giữ nguyên các letter A-F.
+ */
+const ANSWER_NUMBER_MAP: Record<string, string> = {
+  '1': 'A',
+  '2': 'B',
+  '3': 'C',
+  '4': 'D',
+  '5': 'E',
+  '6': 'F',
+};
+
+function normalizeAnswerToken(token: string): string {
+  const t = token.trim().toUpperCase();
+  return ANSWER_NUMBER_MAP[t] ?? t;
+}
+
+/**
  * Parse a workbook into `ParsedRow[]`. Template columns:
  *
  *   Question | Type | OptionA | OptionB | OptionC | OptionD |
@@ -63,11 +186,17 @@ function parseWorkbook(data: ArrayBuffer): { rows: ParsedRow[]; sheet: string } 
   });
 
   const out: ParsedRow[] = [];
-  json.forEach((raw, idx) => {
+  json.forEach((rawOriginal, idx) => {
     const rowNumber = idx + 2; // header is row 1
+    // Phase 18 — normalize header tên cột tiếng Việt → canonical key.
+    // Parser cũ bên dưới đọc `raw['Question']`, `raw['OptionA']`… giữ
+    // nguyên, chỉ cần `raw` đã có sẵn các canonical entries song song
+    // với cột gốc.
+    const raw = remapRowHeaders(rawOriginal);
+    const explanation = String(raw['Explanation'] ?? '').trim() || null;
     try {
       const question = String(raw['Question'] ?? '').trim();
-      if (!question) throw new Error('Thiếu nội dung câu hỏi');
+      if (!question) throw new Error('Thiếu nội dung câu hỏi (cột Question / Câu hỏi / Nội dung)');
 
       const rawType = String(raw['Type'] ?? 'SINGLE_CHOICE')
         .trim()
@@ -78,12 +207,16 @@ function parseWorkbook(data: ArrayBuffer): { rows: ParsedRow[]; sheet: string } 
       const type = rawType as QuestionType;
 
       const correctCell = String(raw['CorrectAnswer'] ?? '').trim();
-      const difficultyCell = String(raw['Difficulty'] ?? 'MEDIUM')
-        .trim()
-        .toUpperCase();
-      const difficulty = (
-        VALID_DIFFICULTIES.includes(difficultyCell as Difficulty) ? difficultyCell : 'MEDIUM'
-      ) as Difficulty;
+      const difficultyCell = String(raw['Difficulty'] ?? 'MEDIUM').trim();
+      // Phase 18 — chấp nhận "Dễ" / "Trung bình" / "Khó" hoặc EASY/MEDIUM/HARD.
+      // Khác parser cũ: báo lỗi nếu giá trị lạ (không silent fallback MEDIUM).
+      const mapped = normalizeDifficulty(difficultyCell);
+      if (!mapped) {
+        throw new Error(
+          `Độ khó không hợp lệ: "${difficultyCell}" — dùng Dễ / Trung bình / Khó hoặc EASY / MEDIUM / HARD`,
+        );
+      }
+      const difficulty = mapped;
 
       const tags = String(raw['Tags'] ?? '')
         .split(/[,;]/)
@@ -98,7 +231,7 @@ function parseWorkbook(data: ArrayBuffer): { rows: ParsedRow[]; sheet: string } 
         question,
         type,
         options,
-        explanation: null,
+        explanation,
         difficulty,
         tags,
         points,
@@ -131,7 +264,16 @@ function buildOptions(
 ): QuestionOption[] {
   if (type === 'TRUE_FALSE') {
     const c = correctCell.trim().toUpperCase();
-    const isTrue = c === 'T' || c === 'TRUE' || c === 'Đ' || c === 'DUNG';
+    // Mở rộng: chấp nhận "ĐÚNG" / "SAI" có dấu + chữ đầy đủ tiếng Việt.
+    const isTrue =
+      c === 'T' ||
+      c === 'TRUE' ||
+      c === 'Đ' ||
+      c === 'DUNG' ||
+      c === 'ĐÚNG' ||
+      c === 'Y' ||
+      c === 'YES' ||
+      c === '1';
     return [
       { id: 'true', text: 'Đúng', isCorrect: isTrue },
       { id: 'false', text: 'Sai', isCorrect: !isTrue },
@@ -161,11 +303,20 @@ function buildOptions(
     .filter((c) => c.text.length > 0);
   if (present.length < 2) throw new Error('Cần ít nhất 2 lựa chọn (OptionA, OptionB)');
 
-  const correctLetters = correctCell
+  // Phase 18 — chấp nhận 1/2/3/4 (map sang A/B/C/D) và A/B/C/D (giữ nguyên).
+  // Cell "1,3" → ['A', 'C']. Giữ nguyên regex split cũ.
+  const rawTokens = correctCell
     .split(/[,;|\s]+/)
-    .map((s) => s.trim().toUpperCase())
+    .map((s) => s.trim())
     .filter(Boolean);
-  if (correctLetters.length === 0) throw new Error('Thiếu cột CorrectAnswer');
+  const correctLetters = rawTokens.map(normalizeAnswerToken);
+
+  // Validate mọi token phải là A..F (sau khi normalize).
+  const invalid = correctLetters.filter((c) => !/^[A-F]$/.test(c));
+  if (invalid.length > 0) {
+    throw new Error(`Đáp án đúng không hợp lệ: ${invalid.join(', ')} — dùng A-F hoặc số 1-6`);
+  }
+  if (correctLetters.length === 0) throw new Error('Thiếu cột CorrectAnswer / Đáp án đúng');
   if (type === 'SINGLE_CHOICE' && correctLetters.length !== 1) {
     throw new Error('SINGLE_CHOICE phải có đúng 1 đáp án');
   }
