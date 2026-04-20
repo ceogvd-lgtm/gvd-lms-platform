@@ -1,5 +1,10 @@
 import { Role } from '@lms/types';
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 
 import { PrismaService } from '../../common/prisma/prisma.service';
 
@@ -132,17 +137,49 @@ export class ChaptersService {
   }
 
   // =====================================================
-  // DELETE — ADMIN+
+  // DELETE — ADMIN+ bất kỳ lúc nào; INSTRUCTOR chỉ khi course
+  // đang DRAFT + chưa có enrollment nào (Phase 18).
+  //
+  // Vì sao có giới hạn với INSTRUCTOR: CLAUDE.md rule gốc là "Tuyệt đối
+  // không xoá" — nhưng user báo lỗi UX khi bấm nhầm trong lúc soạn thảo.
+  // Giải pháp: mở an toàn trong giai đoạn DRAFT (chưa ai học) — sau khi
+  // gửi duyệt / publish thì quay lại rule cũ (admin-only) để bảo toàn
+  // content + tiến độ học viên.
   // =====================================================
   async remove(actor: Actor, id: string) {
-    if (actor.role !== Role.ADMIN && actor.role !== Role.SUPER_ADMIN) {
-      throw new ForbiddenException('Chỉ ADMIN+ mới được xoá chương');
-    }
     const chapter = await this.prisma.client.chapter.findUnique({
       where: { id },
-      select: { id: true },
+      include: {
+        course: {
+          select: {
+            id: true,
+            instructorId: true,
+            status: true,
+            _count: { select: { enrollments: true } },
+          },
+        },
+      },
     });
     if (!chapter) throw new NotFoundException('Không tìm thấy chương');
+
+    this.assertOwnership(actor, chapter.course.instructorId);
+
+    // Instructor chỉ xoá được khi course còn DRAFT + chưa có học viên.
+    // ADMIN+ bypass mọi check (là ngoại lệ hệ thống để gỡ kẹt).
+    if (actor.role === Role.INSTRUCTOR) {
+      if (chapter.course.status !== 'DRAFT') {
+        throw new BadRequestException(
+          `Không thể xoá — khoá học đang ở trạng thái ${chapter.course.status}. ` +
+            `Chỉ xoá được khi còn Nháp. Liên hệ admin nếu cần xử lý.`,
+        );
+      }
+      if (chapter.course._count.enrollments > 0) {
+        throw new BadRequestException(
+          `Không thể xoá — đã có ${chapter.course._count.enrollments} học viên đăng ký khoá học. ` +
+            `Liên hệ admin để xử lý.`,
+        );
+      }
+    }
 
     // Prisma cascades to child lessons via schema onDelete: Cascade.
     await this.prisma.client.chapter.delete({ where: { id } });
