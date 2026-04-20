@@ -5,9 +5,11 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 
+import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 import type { CreateEnrollmentDto } from './dto/create-enrollment.dto';
@@ -17,9 +19,223 @@ interface Actor {
   role: Role;
 }
 
+/**
+ * Phase 18 — kết quả của auto-enroll chạy cho 1 course.
+ * `enrolled`: số student mới được ghi danh
+ * `skipped`: số student đã enroll từ trước (unique constraint skipDuplicates)
+ * `total`: tổng số student trong department
+ */
+export interface AutoEnrollResult {
+  courseId: string;
+  courseTitle: string;
+  departmentId: string | null;
+  departmentName: string | null;
+  enrolled: number;
+  skipped: number;
+  total: number;
+}
+
 @Injectable()
 export class EnrollmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(EnrollmentsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    // Phase 18 — ghi audit log cho mỗi auto-enroll action.
+    // AuditService inject optional vì tests có thể bỏ qua nếu không cần.
+    private readonly audit: AuditService,
+  ) {}
+
+  // =====================================================
+  // Phase 18 — AUTO-ENROLL theo Department
+  //
+  // Khi admin APPROVE course → course.status chuyển PUBLISHED. Hook ở
+  // CoursesService.updateStatus gọi method này để ghi danh tất cả
+  // student có departmentId trùng với department của course (qua
+  // subject.departmentId).
+  //
+  // Cũng được gọi bởi CronProcessor auto-enroll-daily (6:00 AM) để
+  // xử lý student mới vào phòng ban sau khi course đã PUBLISHED từ
+  // trước (khi đó hook APPROVE đã chạy nhưng student chưa tồn tại).
+  //
+  // Idempotent: dùng `createMany + skipDuplicates: true` để bỏ qua
+  // cặp (courseId, studentId) đã tồn tại. Không throw nếu course
+  // không có department hoặc department không có student.
+  // =====================================================
+  async autoEnrollByDepartment(courseId: string): Promise<AutoEnrollResult> {
+    const course = await this.prisma.client.course.findUnique({
+      where: { id: courseId },
+      select: {
+        id: true,
+        title: true,
+        subject: {
+          select: {
+            department: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+    if (!course) {
+      throw new NotFoundException('Không tìm thấy khoá học');
+    }
+
+    const department = course.subject?.department;
+    if (!department) {
+      this.logger.warn(`autoEnrollByDepartment: course ${courseId} không có department → skip`);
+      return {
+        courseId,
+        courseTitle: course.title,
+        departmentId: null,
+        departmentName: null,
+        enrolled: 0,
+        skipped: 0,
+        total: 0,
+      };
+    }
+
+    // Tìm TẤT CẢ student của department này (chưa bị block).
+    const students = await this.prisma.client.user.findMany({
+      where: {
+        role: Role.STUDENT,
+        departmentId: department.id,
+        isBlocked: false,
+      },
+      select: { id: true },
+    });
+
+    if (students.length === 0) {
+      this.logger.log(
+        `autoEnrollByDepartment: department ${department.name} không có student nào → skip`,
+      );
+      return {
+        courseId,
+        courseTitle: course.title,
+        departmentId: department.id,
+        departmentName: department.name,
+        enrolled: 0,
+        skipped: 0,
+        total: 0,
+      };
+    }
+
+    // createMany + skipDuplicates: an toàn với unique(courseId, studentId).
+    // Không throw P2002 khi conflict; trả về count = số row ACTUAL created.
+    const result = await this.prisma.client.courseEnrollment.createMany({
+      data: students.map((s) => ({ courseId, studentId: s.id })),
+      skipDuplicates: true,
+    });
+
+    const enrolled = result.count;
+    const skipped = students.length - enrolled;
+
+    this.logger.log(
+      `autoEnrollByDepartment done — course="${course.title}" department="${department.name}" total=${students.length} enrolled=${enrolled} skipped=${skipped}`,
+    );
+
+    return {
+      courseId,
+      courseTitle: course.title,
+      departmentId: department.id,
+      departmentName: department.name,
+      enrolled,
+      skipped,
+      total: students.length,
+    };
+  }
+
+  /**
+   * Phase 18 — Auto-enroll cho TẤT CẢ course PUBLISHED. Dùng ở:
+   *   1. Cron `auto-enroll-daily` (6:00 AM) — pick up student mới
+   *   2. Admin manual trigger (recover sau downtime)
+   *
+   * Idempotent bằng cách lặp gọi autoEnrollByDepartment (skipDuplicates).
+   */
+  async autoEnrollAllPublished(): Promise<{
+    courses: number;
+    totalEnrolled: number;
+    totalSkipped: number;
+    details: AutoEnrollResult[];
+  }> {
+    const courses = await this.prisma.client.course.findMany({
+      where: { status: CourseStatus.PUBLISHED, isDeleted: false },
+      select: { id: true },
+    });
+
+    const details: AutoEnrollResult[] = [];
+    let totalEnrolled = 0;
+    let totalSkipped = 0;
+
+    for (const c of courses) {
+      try {
+        const res = await this.autoEnrollByDepartment(c.id);
+        details.push(res);
+        totalEnrolled += res.enrolled;
+        totalSkipped += res.skipped;
+      } catch (err) {
+        // Lỗi 1 course → log + tiếp tục với course khác (không throw).
+        this.logger.warn(`autoEnrollAllPublished: course ${c.id} fail — ${(err as Error).message}`);
+      }
+    }
+
+    return {
+      courses: courses.length,
+      totalEnrolled,
+      totalSkipped,
+      details,
+    };
+  }
+
+  /**
+   * Phase 18 — Thống kê enrollment theo department. Dùng cho admin
+   * /admin/reports để xem phân phối học viên.
+   */
+  async statsByDepartment(): Promise<
+    Array<{
+      departmentId: string;
+      departmentName: string;
+      studentCount: number;
+      courseCount: number;
+      enrollmentCount: number;
+    }>
+  > {
+    const departments = await this.prisma.client.department.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        _count: {
+          select: {
+            users: { where: { role: Role.STUDENT, isBlocked: false } },
+            subjects: { where: { isDeleted: false } },
+          },
+        },
+        subjects: {
+          where: { isDeleted: false },
+          select: {
+            courses: {
+              where: { isDeleted: false, status: CourseStatus.PUBLISHED },
+              select: { _count: { select: { enrollments: true } } },
+            },
+          },
+        },
+      },
+    });
+
+    return departments.map((d) => {
+      const courseCount = d.subjects.reduce((sum, s) => sum + s.courses.length, 0);
+      const enrollmentCount = d.subjects.reduce(
+        (sum, s) => sum + s.courses.reduce((cSum, c) => cSum + c._count.enrollments, 0),
+        0,
+      );
+      return {
+        departmentId: d.id,
+        departmentName: d.name,
+        studentCount: d._count.users,
+        courseCount,
+        enrollmentCount,
+      };
+    });
+  }
 
   async enroll(actor: Actor, dto: CreateEnrollmentDto) {
     const course = await this.prisma.client.course.findUnique({

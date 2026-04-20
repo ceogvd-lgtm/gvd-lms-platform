@@ -26,6 +26,7 @@ import { CreateAdminDto } from './dto/create-admin.dto';
 import { ExportUsersDto } from './dto/export-users.dto';
 import { ListAuditLogDto } from './dto/list-audit-log.dto';
 import { ListUsersDto } from './dto/list-users.dto';
+import { UpdateDepartmentDto } from './dto/update-department.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 
 /**
@@ -116,6 +117,23 @@ export class AdminController {
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   bulkBlock(@CurrentUser() user: JwtPayload, @Body() dto: BulkBlockDto, @Req() req: Request) {
     return this.admin.bulkSetBlocked({ id: user.sub, role: user.role }, dto, {
+      ip: getClientIp(req),
+    });
+  }
+
+  // ---------- Phase 18 — ASSIGN DEPARTMENT ----------
+  // Admin gán / gỡ department cho student để auto-enroll hoạt động.
+  // Sau khi gán, admin có thể trigger POST /enrollments/auto-enroll cho
+  // từng course (hoặc chờ cron 06:00 AM tự chạy).
+  @Patch('users/:id/department')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  updateDepartment(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateDepartmentDto,
+    @Req() req: Request,
+  ) {
+    return this.admin.updateDepartment({ id: user.sub, role: user.role }, id, dto, {
       ip: getClientIp(req),
     });
   }

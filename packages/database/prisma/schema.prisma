@@ -92,6 +92,11 @@ model User {
   emailVerified Boolean   @default(false)
   isBlocked     Boolean   @default(false)
   lastLoginAt   DateTime?
+  // Phase 18 — Phòng ban mà user thuộc về. Dùng cho auto-enroll theo
+  // department: khi 1 course PUBLISHED + thuộc subject của department X,
+  // mọi STUDENT có departmentId=X sẽ tự động được ghi danh. Nullable để
+  // user cũ (pre-Phase 18) không bị breaking.
+  departmentId  String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -118,8 +123,12 @@ model User {
   aiRecommendations   AiRecommendation[]
   aiChatMessages      AiChatMessage[]
 
+  // Phase 18 — auto-enroll by department
+  department          Department?         @relation(fields: [departmentId], references: [id])
+
   @@index([email])
   @@index([role])
+  @@index([departmentId])
   @@map("users")
 }
 
@@ -135,6 +144,8 @@ model Department {
 
   subjects     Subject[]
   questionBank QuestionBank[]
+  // Phase 18 — Student thuộc phòng ban → auto-enroll theo department
+  users        User[]
 
   @@map("departments")
 }

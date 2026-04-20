@@ -1,6 +1,8 @@
 import type { JwtPayload } from '@lms/types';
+import { Role } from '@lms/types';
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
 
+import { Roles } from '../../common/rbac/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
@@ -26,6 +28,30 @@ export class EnrollmentsController {
   @Get('me')
   listMine(@CurrentUser() user: JwtPayload) {
     return this.enrollments.listMine(user.sub);
+  }
+
+  /**
+   * Phase 18 — POST /enrollments/auto-enroll
+   * Admin manual trigger auto-enroll cho 1 course cụ thể (ví dụ sau
+   * downtime khi cron không chạy, hoặc debug). Body: { courseId }.
+   * Idempotent (skipDuplicates).
+   */
+  @Post('auto-enroll')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  autoEnroll(@Body() body: { courseId: string }) {
+    return this.enrollments.autoEnrollByDepartment(body.courseId);
+  }
+
+  /**
+   * Phase 18 — GET /enrollments/stats
+   * Thống kê số student / course / enrollment theo department để admin
+   * hiển thị trong /admin/reports. Trả về 1 row/department.
+   */
+  @Get('stats')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  stats() {
+    return this.enrollments.statsByDepartment();
   }
 
   @Delete(':id')
