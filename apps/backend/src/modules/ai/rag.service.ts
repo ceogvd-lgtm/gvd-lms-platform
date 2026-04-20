@@ -11,7 +11,7 @@ import { QuotaService } from './quota.service';
  * Phase 17 — Retrieval-Augmented Generation pipeline.
  *
  * When an instructor uploads a PDF attachment, we chunk it, embed the
- * chunks with `text-embedding-004`, and add them to a ChromaDB
+ * chunks with Gemini embedding model, and add them to a ChromaDB
  * collection tagged with the lessonId. At chat time the student's
  * question is embedded and the top-3 nearest chunks are stitched into
  * the system prompt so the model answers from the actual course
@@ -152,7 +152,14 @@ export class RagService {
         keep.push({ idx, text, embedding: embeddings[idx] });
       }
     });
-    if (keep.length === 0) return { chunks: 0 };
+    if (keep.length === 0) {
+      this.logger.error(
+        `indexDocument: tất cả ${chunks.length} chunks embed fail cho lesson=${lessonId}. ` +
+          `Check GEMINI_API_KEY + model name (hiện dùng env GEMINI_MODEL_EMBEDDING ` +
+          `hoặc default constant). Xem warning phía trên cho nguyên nhân cụ thể.`,
+      );
+      return { chunks: 0 };
+    }
 
     const collection = await this.getCollection();
     const now = Date.now();

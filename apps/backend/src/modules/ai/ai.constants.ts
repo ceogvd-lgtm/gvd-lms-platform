@@ -33,7 +33,11 @@ export const RAG_TOP_K = 3;
  */
 export const GEMINI_DEFAULT_CHAT_MODEL = 'gemini-2.5-flash';
 export const GEMINI_DEFAULT_LITE_MODEL = 'gemini-flash-lite-latest';
-export const GEMINI_DEFAULT_EMBEDDING_MODEL = 'text-embedding-004';
+// Phase 18 bugfix — Google deprecate `text-embedding-004` ở v1beta
+// (404 Not Found khi embedContent). Chuyển sang `gemini-embedding-001`
+// (current stable, tương thích free tier). User có thể override qua env
+// GEMINI_MODEL_EMBEDDING nếu Google publish model mới hơn.
+export const GEMINI_DEFAULT_EMBEDDING_MODEL = 'gemini-embedding-001';
 
 export const AI_RECOMMENDATION_TYPES = {
   REVIEW_LESSON: 'REVIEW_LESSON',
