@@ -19,7 +19,20 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Button, Card, CardContent } from '@lms/ui';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, GripVertical, Plus, Save, Send, Upload } from 'lucide-react';
+import {
+  ArrowRightLeft,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  GripVertical,
+  Pencil,
+  Plus,
+  Save,
+  Send,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -309,6 +322,132 @@ export default function CreateCoursePage() {
     );
   };
 
+  // ---------- Phase 18 Rename / Delete / Move handlers ----------
+  // Mirror của /courses/[id]/edit để wizard /new cũng có đủ bộ
+  // sửa/xoá/chuyển chapter & lesson. Course mới luôn DRAFT nên canDelete=true.
+  const handleRenameChapter = async (id: string, newTitle: string) => {
+    const trimmed = newTitle.trim();
+    if (!trimmed) {
+      toast.error('Tên chương không được để trống');
+      return;
+    }
+    const prev = chapters;
+    setChapters((p) => p.map((c) => (c.id === id ? { ...c, title: trimmed } : c)));
+    try {
+      await chaptersApi.update(id, { title: trimmed }, accessToken!);
+      toast.success('Đã cập nhật tên chương');
+    } catch (err) {
+      setChapters(prev);
+      toast.error(err instanceof ApiError ? err.message : 'Đổi tên thất bại');
+    }
+  };
+
+  const handleDeleteChapter = async (chapter: DraftChapter) => {
+    const lessonCount = chapter.lessons.length;
+    if (
+      !confirm(
+        `Xoá chương "${chapter.title}"?\n\n` +
+          (lessonCount > 0 ? `Tất cả ${lessonCount} bài học trong chương sẽ bị xoá theo.\n` : '') +
+          'Không thể hoàn tác.',
+      )
+    ) {
+      return;
+    }
+    const prev = chapters;
+    setChapters((p) => p.filter((c) => c.id !== chapter.id));
+    try {
+      await chaptersApi.remove(chapter.id, accessToken!);
+      toast.success('Đã xoá chương');
+    } catch (err) {
+      setChapters(prev);
+      toast.error(err instanceof ApiError ? err.message : 'Xoá thất bại');
+    }
+  };
+
+  const handleRenameLesson = async (chapterId: string, lessonId: string, newTitle: string) => {
+    const trimmed = newTitle.trim();
+    if (!trimmed) {
+      toast.error('Tên bài không được để trống');
+      return;
+    }
+    const prev = chapters;
+    setChapters((p) =>
+      p.map((c) =>
+        c.id !== chapterId
+          ? c
+          : {
+              ...c,
+              lessons: c.lessons.map((l) => (l.id === lessonId ? { ...l, title: trimmed } : l)),
+            },
+      ),
+    );
+    try {
+      await lessonsApi.update(lessonId, { title: trimmed }, accessToken!);
+      toast.success('Đã cập nhật tên bài giảng');
+    } catch (err) {
+      setChapters(prev);
+      toast.error(err instanceof ApiError ? err.message : 'Đổi tên thất bại');
+    }
+  };
+
+  const handleDeleteLesson = async (chapterId: string, lesson: DraftLesson) => {
+    if (
+      !confirm(
+        `Xoá bài giảng "${lesson.title}"?\n\n` +
+          'Toàn bộ nội dung (video, quiz, tài liệu) sẽ bị xoá theo.\nKhông thể hoàn tác.',
+      )
+    ) {
+      return;
+    }
+    const prev = chapters;
+    setChapters((p) =>
+      p.map((c) =>
+        c.id !== chapterId ? c : { ...c, lessons: c.lessons.filter((l) => l.id !== lesson.id) },
+      ),
+    );
+    try {
+      await lessonsApi.remove(lesson.id, accessToken!);
+      toast.success('Đã xoá bài giảng');
+    } catch (err) {
+      setChapters(prev);
+      toast.error(err instanceof ApiError ? err.message : 'Xoá thất bại');
+    }
+  };
+
+  const handleMoveLesson = async (
+    fromChapterId: string,
+    lesson: DraftLesson,
+    toChapterId: string,
+  ) => {
+    if (fromChapterId === toChapterId) return;
+    const target = chapters.find((c) => c.id === toChapterId);
+    if (!target) return;
+    if (
+      !confirm(
+        `Chuyển bài giảng "${lesson.title}" sang chương "${target.title}"?\n\n` +
+          'Bài sẽ được đặt ở cuối chương đích.',
+      )
+    ) {
+      return;
+    }
+    const prev = chapters;
+    setChapters((p) =>
+      p.map((c) => {
+        if (c.id === fromChapterId)
+          return { ...c, lessons: c.lessons.filter((l) => l.id !== lesson.id) };
+        if (c.id === toChapterId) return { ...c, lessons: [...c.lessons, lesson] };
+        return c;
+      }),
+    );
+    try {
+      await lessonsApi.move(lesson.id, toChapterId, accessToken!);
+      toast.success(`Đã chuyển "${lesson.title}" sang chương "${target.title}"`);
+    } catch (err) {
+      setChapters(prev);
+      toast.error(err instanceof ApiError ? err.message : 'Chuyển chương thất bại');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -359,6 +498,11 @@ export default function CreateCoursePage() {
               onAddLesson={addLesson}
               onChapterDragEnd={handleChapterDragEnd}
               onLessonDragEnd={handleLessonDragEnd}
+              onRenameChapter={handleRenameChapter}
+              onDeleteChapter={handleDeleteChapter}
+              onRenameLesson={handleRenameLesson}
+              onDeleteLesson={handleDeleteLesson}
+              onMoveLesson={handleMoveLesson}
               sensors={sensors}
             />
           )}
@@ -587,6 +731,11 @@ function Step2Structure({
   onAddLesson,
   onChapterDragEnd,
   onLessonDragEnd,
+  onRenameChapter,
+  onDeleteChapter,
+  onRenameLesson,
+  onDeleteLesson,
+  onMoveLesson,
   sensors,
 }: {
   chapters: DraftChapter[];
@@ -594,6 +743,11 @@ function Step2Structure({
   onAddLesson: (chapterId: string) => void;
   onChapterDragEnd: (e: DragEndEvent) => void;
   onLessonDragEnd: (chapterId: string, e: DragEndEvent) => void;
+  onRenameChapter: (id: string, newTitle: string) => Promise<void>;
+  onDeleteChapter: (chapter: DraftChapter) => Promise<void>;
+  onRenameLesson: (chapterId: string, lessonId: string, newTitle: string) => Promise<void>;
+  onDeleteLesson: (chapterId: string, lesson: DraftLesson) => Promise<void>;
+  onMoveLesson: (fromChapterId: string, lesson: DraftLesson, toChapterId: string) => Promise<void>;
   sensors: ReturnType<typeof useSensors>;
 }) {
   const chapterIds = useMemo(() => chapters.map((c) => c.id), [chapters]);
@@ -603,6 +757,7 @@ function Step2Structure({
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted">
           Kéo-thả để sắp xếp lại thứ tự. Mỗi chương cần ít nhất 1 bài giảng.
+          <span className="ml-1 text-xs italic">Hover vào chương/bài để sửa tên hoặc xoá.</span>
         </p>
         <Button variant="outline" onClick={onAddChapter}>
           <Plus className="h-4 w-4" />
@@ -627,8 +782,14 @@ function Step2Structure({
                   key={ch.id}
                   chapter={ch}
                   index={idx}
+                  allChapters={chapters}
                   onAddLesson={() => onAddLesson(ch.id)}
                   onLessonDragEnd={(e) => onLessonDragEnd(ch.id, e)}
+                  onRename={(newTitle) => onRenameChapter(ch.id, newTitle)}
+                  onDelete={() => onDeleteChapter(ch)}
+                  onRenameLesson={(lessonId, newTitle) => onRenameLesson(ch.id, lessonId, newTitle)}
+                  onDeleteLesson={(lesson) => onDeleteLesson(ch.id, lesson)}
+                  onMoveLesson={(lesson, toChapterId) => onMoveLesson(ch.id, lesson, toChapterId)}
                   sensors={sensors}
                 />
               ))}
@@ -643,14 +804,26 @@ function Step2Structure({
 function SortableChapter({
   chapter,
   index,
+  allChapters,
   onAddLesson,
   onLessonDragEnd,
+  onRename,
+  onDelete,
+  onRenameLesson,
+  onDeleteLesson,
+  onMoveLesson,
   sensors,
 }: {
   chapter: DraftChapter;
   index: number;
+  allChapters: DraftChapter[];
   onAddLesson: () => void;
   onLessonDragEnd: (e: DragEndEvent) => void;
+  onRename: (newTitle: string) => Promise<void>;
+  onDelete: () => Promise<void>;
+  onRenameLesson: (lessonId: string, newTitle: string) => Promise<void>;
+  onDeleteLesson: (lesson: DraftLesson) => Promise<void>;
+  onMoveLesson: (lesson: DraftLesson, toChapterId: string) => Promise<void>;
   sensors: ReturnType<typeof useSensors>;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -663,8 +836,46 @@ function SortableChapter({
   };
   const lessonIds = useMemo(() => chapter.lessons.map((l) => l.id), [chapter.lessons]);
 
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(chapter.title);
+  const [busy, setBusy] = useState(false);
+
+  const startEdit = () => {
+    setEditValue(chapter.title);
+    setIsEditing(true);
+  };
+  const cancelEdit = () => {
+    setEditValue(chapter.title);
+    setIsEditing(false);
+  };
+  const saveEdit = async () => {
+    if (editValue.trim() === chapter.title || !editValue.trim()) {
+      setIsEditing(false);
+      return;
+    }
+    setBusy(true);
+    try {
+      await onRename(editValue);
+    } finally {
+      setBusy(false);
+      setIsEditing(false);
+    }
+  };
+  const handleDelete = async () => {
+    setBusy(true);
+    try {
+      await onDelete();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <div ref={setNodeRef} style={style} className="rounded-card border border-border bg-surface">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="group rounded-card border border-border bg-surface"
+    >
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
         <button
           type="button"
@@ -676,7 +887,79 @@ function SortableChapter({
           <GripVertical className="h-4 w-4" />
         </button>
         <span className="text-xs font-mono text-muted">#{index + 1}</span>
-        <h4 className="flex-1 text-sm font-semibold">{chapter.title}</h4>
+        {isEditing ? (
+          <input
+            type="text"
+            value={editValue}
+            ref={(el) => {
+              if (el && document.activeElement !== el) el.focus();
+            }}
+            disabled={busy}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void saveEdit();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelEdit();
+              }
+            }}
+            className="flex-1 rounded border border-primary bg-background px-2 py-1 text-sm font-semibold outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        ) : (
+          <h4 className="flex-1 text-sm font-semibold">{chapter.title}</h4>
+        )}
+        <div
+          className={
+            'flex items-center gap-1 transition-opacity md:opacity-0 md:group-hover:opacity-100 ' +
+            (isEditing ? 'md:opacity-100' : '')
+          }
+        >
+          {isEditing ? (
+            <>
+              <button
+                type="button"
+                onClick={saveEdit}
+                disabled={busy}
+                className="inline-flex h-7 w-7 items-center justify-center rounded text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                title="Lưu (Enter)"
+              >
+                <Check className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={cancelEdit}
+                disabled={busy}
+                className="inline-flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-surface-2 disabled:opacity-50"
+                title="Huỷ (Esc)"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={startEdit}
+                disabled={busy}
+                className="inline-flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-primary/10 hover:text-primary disabled:opacity-50"
+                title="Sửa tên chương"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={busy}
+                className="inline-flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-rose-500/10 hover:text-rose-500 disabled:opacity-50"
+                title="Xoá chương"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
+        </div>
         <Button size="sm" variant="ghost" onClick={onAddLesson}>
           <Plus className="h-3.5 w-3.5" />
           Thêm bài
@@ -694,7 +977,16 @@ function SortableChapter({
             <SortableContext items={lessonIds} strategy={verticalListSortingStrategy}>
               <ul className="space-y-1">
                 {chapter.lessons.map((l, lidx) => (
-                  <SortableLesson key={l.id} lesson={l} index={lidx} />
+                  <SortableLesson
+                    key={l.id}
+                    lesson={l}
+                    index={lidx}
+                    currentChapterId={chapter.id}
+                    allChapters={allChapters}
+                    onRename={(newTitle) => onRenameLesson(l.id, newTitle)}
+                    onDelete={() => onDeleteLesson(l)}
+                    onMove={(toChapterId) => onMoveLesson(l, toChapterId)}
+                  />
                 ))}
               </ul>
             </SortableContext>
@@ -705,10 +997,61 @@ function SortableChapter({
   );
 }
 
-function SortableLesson({ lesson, index }: { lesson: DraftLesson; index: number }) {
+function SortableLesson({
+  lesson,
+  index,
+  currentChapterId,
+  allChapters,
+  onRename,
+  onDelete,
+  onMove,
+}: {
+  lesson: DraftLesson;
+  index: number;
+  currentChapterId: string;
+  allChapters: DraftChapter[];
+  onRename: (newTitle: string) => Promise<void>;
+  onDelete: () => Promise<void>;
+  onMove: (toChapterId: string) => Promise<void>;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: lesson.id,
   });
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(lesson.title);
+  const [busy, setBusy] = useState(false);
+
+  const startEdit = () => {
+    setEditValue(lesson.title);
+    setIsEditing(true);
+  };
+  const cancelEdit = () => {
+    setEditValue(lesson.title);
+    setIsEditing(false);
+  };
+  const saveEdit = async () => {
+    if (editValue.trim() === lesson.title || !editValue.trim()) {
+      setIsEditing(false);
+      return;
+    }
+    setBusy(true);
+    try {
+      await onRename(editValue);
+    } finally {
+      setBusy(false);
+      setIsEditing(false);
+    }
+  };
+  const handleDelete = async () => {
+    setBusy(true);
+    try {
+      await onDelete();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <li
       ref={setNodeRef}
@@ -717,7 +1060,7 @@ function SortableLesson({ lesson, index }: { lesson: DraftLesson; index: number 
         transition,
         opacity: isDragging ? 0.4 : 1,
       }}
-      className="flex items-center gap-2 rounded border border-transparent px-2 py-1.5 hover:border-border hover:bg-surface-2/40"
+      className="group/lesson flex items-center gap-2 rounded border border-transparent px-2 py-1.5 hover:border-border hover:bg-surface-2/40"
     >
       <button
         type="button"
@@ -729,7 +1072,110 @@ function SortableLesson({ lesson, index }: { lesson: DraftLesson; index: number 
         <GripVertical className="h-3 w-3" />
       </button>
       <span className="text-xs font-mono text-muted">{index + 1}.</span>
-      <span className="flex-1 text-sm">{lesson.title}</span>
+      {isEditing ? (
+        <input
+          type="text"
+          value={editValue}
+          ref={(el) => {
+            if (el && document.activeElement !== el) el.focus();
+          }}
+          disabled={busy}
+          onChange={(e) => setEditValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void saveEdit();
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              cancelEdit();
+            }
+          }}
+          className="flex-1 rounded border border-primary bg-background px-2 py-0.5 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+        />
+      ) : (
+        <span className="flex-1 text-sm">{lesson.title}</span>
+      )}
+      <div
+        className={
+          'flex items-center gap-0.5 transition-opacity md:opacity-0 md:group-hover/lesson:opacity-100 ' +
+          (isEditing ? 'md:opacity-100' : '')
+        }
+      >
+        {isEditing ? (
+          <>
+            <button
+              type="button"
+              onClick={saveEdit}
+              disabled={busy}
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+              title="Lưu"
+            >
+              <Check className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={cancelEdit}
+              disabled={busy}
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted hover:bg-surface-2 disabled:opacity-50"
+              title="Huỷ"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={startEdit}
+              disabled={busy}
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted hover:bg-primary/10 hover:text-primary disabled:opacity-50"
+              title="Sửa tên bài"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+            {allChapters.length > 1 && (
+              <span className="relative inline-flex">
+                <span
+                  className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded text-muted hover:bg-amber-500/10 hover:text-amber-600"
+                  title="Chuyển sang chương khác"
+                >
+                  <ArrowRightLeft className="h-3 w-3 pointer-events-none" />
+                </span>
+                <select
+                  value={currentChapterId}
+                  disabled={busy}
+                  onChange={(e) => {
+                    const target = e.target.value;
+                    if (target && target !== currentChapterId) void onMove(target);
+                  }}
+                  className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed"
+                  aria-label="Chuyển sang chương khác"
+                >
+                  <option value={currentChapterId} disabled>
+                    Chuyển sang…
+                  </option>
+                  {allChapters
+                    .filter((c) => c.id !== currentChapterId)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        #{allChapters.findIndex((x) => x.id === c.id) + 1} — {c.title}
+                      </option>
+                    ))}
+                </select>
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={busy}
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted hover:bg-rose-500/10 hover:text-rose-500 disabled:opacity-50"
+              title="Xoá bài giảng"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </>
+        )}
+      </div>
       <span
         className={
           'rounded-full px-2 py-0.5 text-[10px] font-semibold ' +
