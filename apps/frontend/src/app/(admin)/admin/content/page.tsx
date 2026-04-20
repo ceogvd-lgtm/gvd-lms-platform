@@ -67,8 +67,19 @@ export default function AdminContentPage() {
   const handleApprove = async (course: AdminCourseRow) => {
     if (!confirm(`Duyệt và xuất bản "${course.title}"?`)) return;
     try {
-      await adminContentApi.approve(course.id, accessToken!);
-      toast.success(`Đã duyệt "${course.title}"`);
+      const result = await adminContentApi.approve(course.id, accessToken!);
+      // Phase 18 — backend trả về autoEnroll info nếu course có department.
+      // Hiện toast rõ cho admin biết bao nhiêu student được ghi danh.
+      if (result.autoEnroll && result.autoEnroll.total > 0) {
+        const { enrolled, skipped, departmentName } = result.autoEnroll;
+        const deptLabel = departmentName ? `phòng ban "${departmentName}"` : 'phòng ban';
+        const parts = [`Đã duyệt "${course.title}"`];
+        if (enrolled > 0) parts.push(`+ tự động ghi danh ${enrolled} học viên ${deptLabel}`);
+        if (skipped > 0) parts.push(`(${skipped} đã ghi danh từ trước)`);
+        toast.success(parts.join(' '));
+      } else {
+        toast.success(`Đã duyệt "${course.title}"`);
+      }
       invalidate();
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Duyệt thất bại';

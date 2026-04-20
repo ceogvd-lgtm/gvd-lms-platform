@@ -278,6 +278,8 @@ export interface AdminUser {
   is2FAEnabled: boolean;
   isBlocked: boolean;
   lastLoginAt: string | null;
+  /** Phase 18 — Phòng ban của user (cho auto-enroll). null = chưa gán. */
+  departmentId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -368,6 +370,18 @@ export const adminApi = {
     api<AdminUser>(`/admin/users/${id}/block`, {
       method: 'PATCH',
       body: { blocked },
+      token,
+    }),
+
+  /**
+   * Phase 18 — gán / gỡ department cho user. Gửi `null` để clear.
+   * Student trong department sẽ tự động được ghi danh course PUBLISHED
+   * cùng department qua hook APPROVE và cron 06:00 daily.
+   */
+  updateDepartment: (id: string, departmentId: string | null, token: string) =>
+    api<AdminUser>(`/admin/users/${id}/department`, {
+      method: 'PATCH',
+      body: { departmentId },
       token,
     }),
 
@@ -527,7 +541,23 @@ export const adminContentApi = {
     api<CourseImpact>(`/admin/content/courses/${id}/impact`, { token }),
 
   approve: (id: string, token: string) =>
-    api<{ id: string; status: string }>(`/admin/content/courses/${id}/approve`, {
+    api<{
+      id: string;
+      status: string;
+      /**
+       * Phase 18 — thông tin auto-enroll sau khi APPROVE.
+       * `enrolled`: số student mới ghi danh
+       * `total`: tổng student trong department của course
+       * `departmentName`: tên phòng ban để hiển thị toast
+       * `undefined` nếu course không có department hoặc hook fail.
+       */
+      autoEnroll?: {
+        enrolled: number;
+        skipped: number;
+        total: number;
+        departmentName: string | null;
+      };
+    }>(`/admin/content/courses/${id}/approve`, {
       method: 'PATCH',
       token,
     }),

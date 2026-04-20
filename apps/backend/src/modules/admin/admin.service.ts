@@ -43,6 +43,9 @@ const USER_SAFE_SELECT = {
   is2FAEnabled: true,
   isBlocked: true,
   lastLoginAt: true,
+  // Phase 18 — expose departmentId trong list để UI hiển thị dropdown
+  // department hiện tại của user (gán/gỡ qua PATCH /admin/users/:id/department).
+  departmentId: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -327,6 +330,62 @@ export class AdminService {
       ipAddress: meta.ip,
       oldValue: { isBlocked: !dto.blocked },
       newValue: { isBlocked: dto.blocked },
+    });
+
+    return updated;
+  }
+
+  // =====================================================
+  // Phase 18 — ASSIGN DEPARTMENT cho user (cho flow auto-enroll).
+  //
+  // Admin+ gán / gỡ `departmentId` cho user. Student trong department
+  // sẽ tự động được ghi danh vào mọi course PUBLISHED thuộc department
+  // đó qua hook APPROVE và cron daily.
+  //
+  // Kiểm tra luật:
+  //   - AdminRulesService.checkById để đảm bảo không vi phạm 4 luật
+  //   - Nếu departmentId non-null → verify department tồn tại
+  // =====================================================
+  async updateDepartment(
+    actor: { id: string; role: Role },
+    targetId: string,
+    dto: { departmentId?: string | null },
+    meta: RequestMeta,
+  ) {
+    const target = await this.rules.checkById(actor, targetId, 'UPDATE_USER');
+
+    // Verify department exists if setting a new one (null = clear)
+    if (dto.departmentId) {
+      const dept = await this.prisma.client.department.findUnique({
+        where: { id: dto.departmentId },
+        select: { id: true, isActive: true },
+      });
+      if (!dept) {
+        throw new NotFoundException('Không tìm thấy phòng ban');
+      }
+    }
+
+    const prevDepartmentId = (
+      await this.prisma.client.user.findUnique({
+        where: { id: targetId },
+        select: { departmentId: true },
+      })
+    )?.departmentId;
+
+    const updated = await this.prisma.client.user.update({
+      where: { id: targetId },
+      data: { departmentId: dto.departmentId ?? null },
+      select: { ...USER_SAFE_SELECT, departmentId: true },
+    });
+
+    await this.audit.log({
+      userId: actor.id,
+      action: 'ADMIN_UPDATE_USER_DEPARTMENT',
+      targetType: 'User',
+      targetId: target.id,
+      ipAddress: meta.ip,
+      oldValue: { departmentId: prevDepartmentId ?? null },
+      newValue: { departmentId: dto.departmentId ?? null },
     });
 
     return updated;

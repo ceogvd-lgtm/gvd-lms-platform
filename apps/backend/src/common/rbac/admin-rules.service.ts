@@ -10,8 +10,15 @@ import { PrismaService } from '../prisma/prisma.service';
  *   DELETE_USER       — deleting any user (soft or hard)
  *   UPDATE_ROLE       — changing a user's role
  *   BLOCK_USER        — toggling isBlocked on a user
+ *   UPDATE_USER       — Phase 18: gán department cho user khác (non-privileged,
+ *                       follows LAW 2: ADMIN không được sửa ADMIN/SUPER_ADMIN khác)
  */
-export type AdminAction = 'CREATE_ADMIN' | 'DELETE_USER' | 'UPDATE_ROLE' | 'BLOCK_USER';
+export type AdminAction =
+  | 'CREATE_ADMIN'
+  | 'DELETE_USER'
+  | 'UPDATE_ROLE'
+  | 'BLOCK_USER'
+  | 'UPDATE_USER';
 
 export interface AdminActor {
   id: string;

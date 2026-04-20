@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 
 import { PrismaModule } from '../../common/prisma/prisma.module';
 import { CRON_QUEUE } from '../../common/queue/queue.module';
+import { EnrollmentsModule } from '../enrollments/enrollments.module';
 import { ProgressModule } from '../progress/progress.module';
 import { ReportsModule } from '../reports/reports.module';
 import { StorageCleanupModule } from '../storage-cleanup/storage-cleanup.module';
@@ -31,6 +32,9 @@ import { ScheduledReportsService } from './scheduled-reports.service';
     // Phase 18 — CronProcessor dispatches storage-cleanup-weekly jobs
     // to StorageCleanupService, so pull it in here.
     StorageCleanupModule,
+    // Phase 18 — CronProcessor dispatches auto-enroll-daily jobs to
+    // EnrollmentsService.autoEnrollAllPublished.
+    EnrollmentsModule,
     BullModule.registerQueue({ name: CRON_QUEUE }),
   ],
   controllers: [AnalyticsController],

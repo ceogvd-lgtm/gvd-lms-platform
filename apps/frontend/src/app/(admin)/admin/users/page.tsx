@@ -32,6 +32,7 @@ import { CreateAdminModal } from '@/components/admin/create-admin-modal';
 import { RoleBadge } from '@/components/ui/role-badge';
 import { adminApi, ApiError, triggerBlobDownload, type AdminUser } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import { departmentsApi } from '@/lib/curriculum';
 import { checkAdminRules, type Actor, type Role } from '@/lib/rbac';
 
 const ROLE_FILTERS: Array<{ label: string; value: string }> = [
@@ -80,6 +81,25 @@ export default function AdminUsersPage() {
     enabled: !!accessToken,
     placeholderData: keepPreviousData,
   });
+
+  // Phase 18 — load departments để render dropdown inline gán cho user
+  const departmentsQuery = useQuery({
+    queryKey: ['departments-list'],
+    queryFn: () => departmentsApi.list(),
+    staleTime: 60 * 60 * 1000,
+  });
+
+  // Phase 18 — gán department (null = clear)
+  const handleUpdateDepartment = async (userId: string, departmentId: string | null) => {
+    try {
+      await adminApi.updateDepartment(userId, departmentId, accessToken!);
+      toast.success(departmentId ? 'Đã gán phòng ban' : 'Đã gỡ phòng ban');
+      qc.invalidateQueries({ queryKey: ['admin-users'] });
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Cập nhật phòng ban thất bại';
+      toast.error(msg);
+    }
+  };
 
   const actor: Actor | null = useMemo(
     () => (me ? { id: me.id, role: me.role as Role } : null),
@@ -178,6 +198,32 @@ export default function AdminUsersPage() {
         cell: ({ row }) => <RoleBadge role={row.original.role as Role} />,
       },
       {
+        id: 'department',
+        header: 'Phòng ban',
+        cell: ({ row }) => {
+          // Phase 18 — inline select dropdown. Admin gán department để
+          // auto-enroll hoạt động. Hiện với mọi user (nhưng có nghĩa nhất
+          // với STUDENT, vì auto-enroll chỉ chạy cho role STUDENT).
+          const depts = departmentsQuery.data ?? [];
+          const currentId = row.original.departmentId ?? '';
+          return (
+            <select
+              value={currentId}
+              onChange={(e) => handleUpdateDepartment(row.original.id, e.target.value || null)}
+              className="h-7 rounded border border-border bg-background px-2 text-xs outline-none focus:border-primary"
+              aria-label="Gán phòng ban"
+            >
+              <option value="">— Chưa gán —</option>
+              {depts.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          );
+        },
+      },
+      {
         id: 'status',
         header: 'Trạng thái',
         cell: ({ row }) =>
@@ -201,7 +247,8 @@ export default function AdminUsersPage() {
         ),
       },
     ],
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [departmentsQuery.data],
   );
 
   // Early return AFTER all hooks have run — avoids "hooks called conditionally".

@@ -12,6 +12,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
 import { extractMinioKey } from '../../common/storage/storage.utils';
+import { EnrollmentsService } from '../enrollments/enrollments.service';
 
 import type { CreateCourseDto } from './dto/create-course.dto';
 import type { ListCoursesDto } from './dto/list-courses.dto';
@@ -43,6 +44,10 @@ export class CoursesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly storage: StorageService,
+    // Phase 18 — auto-enroll hook sau APPROVE. Fire-and-forget không
+    // throw; nếu auto-enroll fail, course vẫn PUBLISHED, admin có thể
+    // re-trigger qua POST /enrollments/auto-enroll.
+    private readonly enrollments: EnrollmentsService,
   ) {}
 
   // =====================================================
@@ -399,7 +404,45 @@ export class CoursesService {
       newValue: { status: nextStatus, reason: dto.reason },
     });
 
-    return updated;
+    // Phase 18 — auto-enroll student cùng department khi course vừa được
+    // APPROVE (DRAFT/PENDING_REVIEW → PUBLISHED). Fire-and-forget: nếu
+    // fail, course vẫn xuất bản thành công, admin có thể re-trigger qua
+    // POST /enrollments/auto-enroll. Gắn enrollment count vào response
+    // để FE hiện toast "Đã duyệt + ghi danh N học viên".
+    let autoEnrollResult:
+      | {
+          enrolled: number;
+          skipped: number;
+          total: number;
+          departmentName: string | null;
+        }
+      | undefined;
+    if (dto.action === 'APPROVE' && nextStatus === CourseStatus.PUBLISHED) {
+      try {
+        const r = await this.enrollments.autoEnrollByDepartment(id);
+        autoEnrollResult = {
+          enrolled: r.enrolled,
+          skipped: r.skipped,
+          total: r.total,
+          departmentName: r.departmentName,
+        };
+        // Audit sep để tách phân luồng khỏi COURSE_APPROVE.
+        await this.audit.log({
+          userId: actor.id,
+          action: 'AUTO_ENROLL_ON_APPROVE',
+          targetType: 'Course',
+          targetId: id,
+          ipAddress: meta.ip,
+          newValue: autoEnrollResult,
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Auto-enroll on APPROVE failed (non-fatal): course=${id} ${(err as Error).message}`,
+        );
+      }
+    }
+
+    return { ...updated, autoEnroll: autoEnrollResult };
   }
 
   // =====================================================

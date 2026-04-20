@@ -3,6 +3,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 
 import { CRON_QUEUE } from '../../common/queue/queue.module';
+import { AUTO_ENROLL_JOB } from '../enrollments/enrollment-scheduler.service';
+import { EnrollmentsService } from '../enrollments/enrollments.service';
 import { AtRiskService } from '../progress/at-risk.service';
 import {
   STORAGE_CLEANUP_JOB,
@@ -28,6 +30,8 @@ export class CronProcessor extends WorkerHost {
   constructor(
     private readonly atRisk: AtRiskService,
     private readonly storageCleanup: StorageCleanupService,
+    // Phase 18 — auto-enroll-daily cron dispatch
+    private readonly enrollments: EnrollmentsService,
   ) {
     super();
   }
@@ -46,6 +50,15 @@ export class CronProcessor extends WorkerHost {
         const res = await this.storageCleanup.runCleanup('SYSTEM', 'cron');
         this.logger.log(
           `${STORAGE_CLEANUP_JOB} done — orphan=${res.orphanKeys} deleted=${res.deleted} errors=${res.errors}`,
+        );
+        return { ok: true, result: res };
+      }
+      case AUTO_ENROLL_JOB: {
+        // Phase 18 — 06:00 daily: auto-enroll student mới vào course
+        // PUBLISHED cùng department. Idempotent (skipDuplicates).
+        const res = await this.enrollments.autoEnrollAllPublished();
+        this.logger.log(
+          `${AUTO_ENROLL_JOB} done — courses=${res.courses} enrolled=${res.totalEnrolled} skipped=${res.totalSkipped}`,
         );
         return { ok: true, result: res };
       }
