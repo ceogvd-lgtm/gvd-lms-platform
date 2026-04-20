@@ -1,6 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChromaClient, type Collection } from 'chromadb';
+import type * as PdfParseNs from 'pdf-parse';
 
 import { RAG_CHUNK_OVERLAP, RAG_CHUNK_SIZE, RAG_TOP_K } from './ai.constants';
 import { GeminiService } from './gemini.service';
@@ -103,11 +104,30 @@ export class RagService {
    * chunks older than the most recent `indexedAt` per lesson.
    */
   async indexDocument(lessonId: string, buffer: Buffer): Promise<{ chunks: number }> {
+    // Phase 18 bugfix — pdf-parse@2.x đổi API từ function `pdfParse(buf)`
+    // sang class `PDFParse`. Trước đó code cũ require() hy vọng nhận
+    // function → "pdfParse is not a function" → job retry 3 lần rồi fail.
+    // Dùng dynamic import để tương thích cả CJS + ESM.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const pdfParse = require('pdf-parse') as (b: Buffer) => Promise<{ text: string }>;
-    const parsed = await pdfParse(buffer);
-    const chunks = this.splitText(parsed.text);
-    if (chunks.length === 0) return { chunks: 0 };
+    const { PDFParse } = require('pdf-parse') as typeof PdfParseNs;
+    // Buffer là subclass của Uint8Array trong Node → truyền trực tiếp OK.
+    // Cast sang Uint8Array rõ ràng để tránh TS phàn nàn về loại data.
+    const parser = new PDFParse({ data: new Uint8Array(buffer) });
+    let fullText = '';
+    try {
+      const result = await parser.getText();
+      fullText = result.text;
+    } finally {
+      // Giải phóng worker PDF.js để không rò memory khi job retry.
+      await parser.destroy().catch(() => undefined);
+    }
+    const chunks = this.splitText(fullText);
+    if (chunks.length === 0) {
+      this.logger.warn(
+        `indexDocument: PDF lesson=${lessonId} trả text rỗng — có thể là scan/image-only PDF`,
+      );
+      return { chunks: 0 };
+    }
 
     const embeddings: number[][] = [];
     for (const chunk of chunks) {
