@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { PrismaService } from '../../common/prisma/prisma.service';
 
-import { AI_DAILY_WARN_THRESHOLD } from './ai.constants';
+import { AI_DAILY_HARD_CAP_DISPLAY, AI_DAILY_WARN_THRESHOLD } from './ai.constants';
 
 /**
  * Phase 17 — AI quota tracking.
@@ -53,6 +53,25 @@ export class QuotaService {
       );
     }
     return { requests: log.requests, tokens: log.tokens };
+  }
+
+  /**
+   * Phase 18 — read-only quick check: còn quota cho bucket này không?
+   * Dùng trước khi enqueue job không tương tác (auto-index PDF): nếu
+   * quota đầy → caller skip enqueue + log warn, không throw.
+   *
+   * Trả về `false` khi `requests >= AI_DAILY_HARD_CAP_DISPLAY`. Không
+   * increment — đó là job của `checkAndIncrement` ngay trước khi gọi
+   * Gemini thật sự trong worker.
+   */
+  async hasQuotaFor(model: 'chat' | 'lite' | 'embedding'): Promise<boolean> {
+    const date = QuotaService.today();
+    const row = await this.prisma.client.aiQuotaLog.findUnique({
+      where: { date_model: { date, model } },
+      select: { requests: true },
+    });
+    const used = row?.requests ?? 0;
+    return used < AI_DAILY_HARD_CAP_DISPLAY;
   }
 
   /**

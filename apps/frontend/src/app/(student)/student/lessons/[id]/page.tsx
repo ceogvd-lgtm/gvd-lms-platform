@@ -10,6 +10,7 @@ import { useSwipeable } from 'react-swipeable';
 import { toast } from 'sonner';
 
 import { AiChatWidget } from '@/components/ai/chat-widget';
+import { AiIndexBadge } from '@/components/instructor/ai-index-badge';
 import { DiscussionsTab } from '@/components/student/discussions-tab';
 import { LessonOutline } from '@/components/student/lesson-outline';
 import { NotesTab } from '@/components/student/notes-tab';
@@ -501,7 +502,11 @@ function AttachmentsTab({ items, loading }: { items: LessonAttachment[]; loading
           >
             <FileText className="h-5 w-5 text-primary" />
             <div className="min-w-0 flex-1">
-              <p className="truncate font-medium">{a.fileName}</p>
+              <div className="flex items-center gap-2">
+                <p className="truncate font-medium">{a.fileName}</p>
+                {/* Phase 18 — student cũng thấy badge để biết khi nào hỏi AI được */}
+                <AiIndexBadge attachment={a} />
+              </div>
               <p className="text-xs text-muted">{(a.fileSize / 1024 / 1024).toFixed(2)} MB</p>
             </div>
             <Button variant="outline" size="sm" onClick={() => setOpen(a)}>

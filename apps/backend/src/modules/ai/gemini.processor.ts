@@ -2,6 +2,8 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 
+import { PrismaService } from '../../common/prisma/prisma.service';
+
 import { GEMINI_QUEUE } from './ai.constants';
 import { QuestionSuggestService } from './question-suggest.service';
 import { RagService } from './rag.service';
@@ -37,6 +39,8 @@ export class GeminiProcessor extends WorkerHost {
     private readonly weekly: WeeklyReportService,
     private readonly rag: RagService,
     private readonly suggestions: QuestionSuggestService,
+    // Phase 18 — update `lesson_attachments.aiIndexed` flag sau index.
+    private readonly prisma: PrismaService,
   ) {
     super();
   }
@@ -57,9 +61,10 @@ export class GeminiProcessor extends WorkerHost {
         return { ok: true, result: res };
       }
       case 'index-lesson-from-url': {
-        const { lessonId, fileUrl } = job.data as {
+        const { lessonId, fileUrl, attachmentId } = job.data as {
           lessonId: string;
           fileUrl: string;
+          attachmentId?: string; // Phase 18 — để update aiIndexed flag
         };
         // Download the PDF from MinIO's public URL. Kept here (not in
         // RagService) because the storage layer is a separate concern
@@ -72,7 +77,26 @@ export class GeminiProcessor extends WorkerHost {
         const arrayBuf = await resp.arrayBuffer();
         const buffer = Buffer.from(arrayBuf);
         const res = await this.rag.indexDocument(lessonId, buffer);
-        this.logger.log(`index-lesson done — lesson=${lessonId} chunks=${res.chunks}`);
+
+        // Phase 18 — đánh dấu attachment đã được AI học. Chỉ set flag
+        // khi thực sự có chunks được embed (res.chunks > 0). PDF quét
+        // (không có text) → chunks=0 → flag=false để UI hiện warning.
+        if (attachmentId && res.chunks > 0) {
+          await this.prisma.client.lessonAttachment
+            .update({
+              where: { id: attachmentId },
+              data: { aiIndexed: true, aiIndexedAt: new Date() },
+            })
+            .catch((err) =>
+              this.logger.warn(
+                `Update aiIndexed failed for ${attachmentId}: ${(err as Error).message}`,
+              ),
+            );
+        }
+
+        this.logger.log(
+          `index-lesson done — lesson=${lessonId} chunks=${res.chunks} attachment=${attachmentId ?? '(unknown)'}`,
+        );
         return { ok: true, result: res };
       }
       case 'suggest-questions': {

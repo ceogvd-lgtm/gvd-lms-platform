@@ -1,3 +1,4 @@
+import { getQueueToken } from '@nestjs/bullmq';
 import { NotFoundException } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
@@ -5,6 +6,8 @@ import { Test } from '@nestjs/testing';
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
+import { GEMINI_QUEUE } from '../ai/ai.constants';
+import { QuotaService } from '../ai/quota.service';
 import { CertificatesService } from '../certificates/certificates.service';
 import { ProgressService } from '../progress/progress.service';
 import { XpService } from '../students/xp.service';
@@ -51,6 +54,10 @@ describe('LessonsService — getContext', () => {
         { provide: CertificatesService, useValue: { checkAndIssueCertificate: jest.fn() } },
         // Phase 18 — StorageService chỉ đụng trong softDelete, stub no-op.
         { provide: StorageService, useValue: { delete: jest.fn(), deletePrefix: jest.fn() } },
+        // Phase 18 — auto-index PDF hooks, không đụng trong getContext nhưng
+        // constructor cần inject.
+        { provide: getQueueToken(GEMINI_QUEUE), useValue: { add: jest.fn() } },
+        { provide: QuotaService, useValue: { hasQuotaFor: jest.fn() } },
       ],
     }).compile();
     service = mod.get(LessonsService);

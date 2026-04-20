@@ -269,6 +269,13 @@ export interface LessonAttachment {
   fileUrl: string;
   fileSize: number;
   mimeType: string;
+  /**
+   * Phase 18 — AI auto-index flag. `true` sau khi GeminiProcessor đã
+   * chunk + embed + push Chroma cho PDF này. Chatbot sẽ trả lời theo
+   * nội dung PDF. Non-PDF luôn `false`.
+   */
+  aiIndexed: boolean;
+  aiIndexedAt: string | null;
   createdAt: string;
 }
 
