@@ -2,7 +2,7 @@
 
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from '@lms/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Archive, Eye, FileQuestion, History, Loader2, Save } from 'lucide-react';
+import { AlertCircle, Archive, Eye, FileQuestion, History, Loader2, Save } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -59,27 +59,34 @@ export default function LessonEditorPage({ params }: PageProps) {
 
   const [theoryBody, setTheoryBody] = useState<JSONContent | null>(null);
   const [theoryStatus, setTheoryStatus] = useState<SaveStatus>('idle');
+  // Phase 18 UX — track dirty là state (để UI re-render) + mirror vào ref
+  // (để auto-save interval đọc giá trị mới nhất mà không tái tạo timer).
+  const [isDirty, setIsDirty] = useState(false);
   const dirtyRef = useRef(false);
+  useEffect(() => {
+    dirtyRef.current = isDirty;
+  }, [isDirty]);
 
   useEffect(() => {
     if (theoryQuery.data) {
       setTheoryBody((theoryQuery.data.body as JSONContent | null) ?? null);
-      dirtyRef.current = false;
+      setIsDirty(false);
     }
   }, [theoryQuery.data]);
 
-  // Auto-save loop
+  // Auto-save loop — dùng dirtyRef trong callback để không capture stale state.
   useEffect(() => {
     if (!accessToken) return;
     const timer = setInterval(async () => {
       if (!dirtyRef.current || !theoryBody) return;
-      dirtyRef.current = false;
+      setIsDirty(false);
       setTheoryStatus('saving');
       try {
         await theoryContentsApi.saveBody(lessonId, theoryBody, accessToken);
         setTheoryStatus('saved');
       } catch (err) {
         setTheoryStatus('error');
+        setIsDirty(true); // save fail → vẫn còn dirty để thử lại
         // eslint-disable-next-line no-console
         console.warn('[auto-save theory]', err);
       }
@@ -87,9 +94,21 @@ export default function LessonEditorPage({ params }: PageProps) {
     return () => clearInterval(timer);
   }, [accessToken, lessonId, theoryBody]);
 
+  // Phase 18 UX — cảnh báo native khi user đóng tab / reload / navigate away
+  // nếu còn thay đổi chưa lưu. Browser tự hiện popup "Leave site?".
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = ''; // Chrome cần set này để popup hiện
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
   const handleTheoryChange = (content: JSONContent) => {
     setTheoryBody(content);
-    dirtyRef.current = true;
+    setIsDirty(true);
     setTheoryStatus('idle');
   };
 
@@ -99,7 +118,7 @@ export default function LessonEditorPage({ params }: PageProps) {
     try {
       await theoryContentsApi.saveBody(lessonId, theoryBody, accessToken!);
       setTheoryStatus('saved');
-      dirtyRef.current = false;
+      setIsDirty(false);
       toast.success('Đã lưu lý thuyết');
     } catch (err) {
       setTheoryStatus('error');
@@ -135,6 +154,11 @@ export default function LessonEditorPage({ params }: PageProps) {
     queryFn: () => chaptersApi.listByCourse(courseId!, accessToken!),
     enabled: !!courseId && !!accessToken,
   });
+
+  // Phase 18 UX — track active tab để ẨN floating save bar khi user không
+  // đang ở tab "Lý thuyết". Tab khác có save riêng (Nội dung/Tài liệu/
+  // Thực hành tự save khi upload; Lịch sử read-only).
+  const [activeTab, setActiveTab] = useState('content');
 
   return (
     <div className="-m-4 flex h-[calc(100vh-64px)] sm:-m-6 lg:-m-8">
@@ -178,7 +202,7 @@ export default function LessonEditorPage({ params }: PageProps) {
         </header>
 
         <main className="flex-1 overflow-y-auto bg-background px-6 py-4">
-          <Tabs defaultValue="content">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList>
               <TabsTrigger value="content">Nội dung chính</TabsTrigger>
               <TabsTrigger value="theory">Lý thuyết</TabsTrigger>
@@ -232,32 +256,60 @@ export default function LessonEditorPage({ params }: PageProps) {
           </Tabs>
         </main>
 
-        {/* Floating save status */}
-        <div className="fixed bottom-4 right-4 z-30 flex items-center gap-2 rounded-button border border-border bg-surface px-4 py-2 shadow-lg">
-          {theoryStatus === 'saving' && (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-              <span className="text-xs font-semibold text-primary">Đang lưu…</span>
-            </>
-          )}
-          {theoryStatus === 'saved' && (
-            <>
-              <Save className="h-4 w-4 text-emerald-500" />
-              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                Đã lưu
+        {/* Phase 18 UX — Floating save bar CHỈ hiện trên tab "Lý thuyết".
+            Các tab khác có save riêng, nút "Lưu ngay" ở đó gây nhầm lẫn. */}
+        {activeTab === 'theory' && (
+          <div
+            className={`fixed bottom-4 right-4 z-30 flex items-center gap-2 rounded-button border px-4 py-2 shadow-lg transition-colors ${
+              isDirty && theoryStatus === 'idle'
+                ? 'border-amber-500/50 bg-amber-500/5'
+                : 'border-border bg-surface'
+            }`}
+          >
+            {theoryStatus === 'saving' && (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                <span className="text-xs font-semibold text-primary">Đang lưu…</span>
+              </>
+            )}
+            {theoryStatus === 'saved' && !isDirty && (
+              <>
+                <Save className="h-4 w-4 text-emerald-500" />
+                <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                  Đã lưu
+                </span>
+              </>
+            )}
+            {theoryStatus === 'error' && (
+              <span className="text-xs font-semibold text-red-600 dark:text-red-400">
+                Lưu thất bại — bấm để thử lại
               </span>
-            </>
-          )}
-          {theoryStatus === 'error' && (
-            <span className="text-xs font-semibold text-red-600 dark:text-red-400">
-              Lưu thất bại — bấm để thử lại
-            </span>
-          )}
-          {theoryStatus === 'idle' && <span className="text-xs text-muted">Chưa thay đổi</span>}
-          <Button size="sm" variant="ghost" onClick={handleManualSaveTheory}>
-            Lưu ngay
-          </Button>
-        </div>
+            )}
+            {theoryStatus === 'idle' && !isDirty && (
+              <span className="text-xs text-muted">Chưa thay đổi</span>
+            )}
+            {/* Phase 18 UX — label mới: phân biệt "clean" (xám, chưa gõ gì)
+                vs "dirty" (vàng cảnh báo, có gõ chưa lưu). Trước đây cả 2
+                đều hiện "Chưa thay đổi" → user dễ hiểu nhầm rồi đóng tab
+                mất nội dung. */}
+            {theoryStatus === 'idle' && isDirty && (
+              <>
+                <AlertCircle className="h-4 w-4 text-amber-500" />
+                <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+                  Chưa lưu
+                </span>
+              </>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleManualSaveTheory}
+              disabled={theoryStatus === 'saving' || (!isDirty && theoryStatus === 'saved')}
+            >
+              Lưu ngay
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
