@@ -233,6 +233,9 @@ pnpm --filter @lms/ui build           # khi sửa packages/ui
 - Presigned URL video expires 1h → dùng PUBLIC_PREFIXES thay thế
 - Unity WebGL build tên project "Builds" → verify Builds.loader.js khi upload
 - Role-based redirect: Admin→/admin/dashboard | Instructor→/instructor/dashboard | Student→/student/dashboard
+- Nút "Gửi duyệt" trong /instructor/lessons/:id/edit header (chỉ hiện khi course.status===DRAFT)
+- Back link "← Khoá học: [tên]" + badge status trong lesson editor header
+- Flow đúng: soạn xong bài → Gửi duyệt tại chỗ → Admin thấy trong /admin/content tab Chờ duyệt
 - /dashboard tự redirect theo role (homeForRole tại src/lib/auth-redirect.ts)
 - Admin + Instructor không còn "Sắp có" (dùng sidebar riêng)
 - /profile + /account/settings: trang cá nhân mọi role (dashboard group)
