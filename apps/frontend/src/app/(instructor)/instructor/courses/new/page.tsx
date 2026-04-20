@@ -28,7 +28,6 @@ import {
   Pencil,
   Plus,
   Save,
-  Send,
   Trash2,
   Upload,
   X,
@@ -210,18 +209,10 @@ export default function CreateCoursePage() {
 
   const handleBack = () => setStep((s) => Math.max(0, s - 1));
 
-  // ---------- Final step actions (preview) ----------
-  const handleSubmitForReview = async () => {
-    if (!courseId) return;
-    try {
-      await coursesApi.updateStatus(courseId, 'SUBMIT', accessToken!);
-      toast.success('Đã gửi khoá học cho admin duyệt');
-      router.push('/instructor/courses');
-    } catch (e) {
-      const msg = e instanceof ApiError ? e.message : 'Gửi duyệt thất bại';
-      toast.error(msg);
-    }
-  };
+  // Phase 18 — BỎ handleSubmitForReview khỏi wizard /new.
+  // Flow đúng: Step 3 chỉ preview + "Lưu nháp" hoặc "Upload nội dung" →
+  // đi sang lesson editor → upload video/SCORM/quiz → bấm "Gửi duyệt"
+  // ở header lesson editor SAU KHI bài giảng thật sự đầy đủ.
 
   const handleSaveDraft = () => {
     toast.success('Đã lưu bản nháp');
@@ -536,17 +527,12 @@ export default function CreateCoursePage() {
               <Save className="h-4 w-4" />
               Lưu nháp
             </Button>
-            <Button variant="outline" onClick={handleSubmitForReview}>
-              <Send className="h-4 w-4" />
-              Gửi duyệt Admin
-            </Button>
-            {/*
-              After the wizard has persisted the skeleton we jump straight
-              to the first lesson's editor so the instructor can upload
-              content (SCORM / Video / PPT / WebGL) without manually
-              hunting the lesson id via the courses list. Disabled when
-              the draft still has 0 lessons.
-            */}
+            {/* Phase 18 — BỎ "Gửi duyệt Admin" ở bước này vì course chưa
+                có nội dung thật (video/SCORM/quiz/WebGL). Gửi ngay khi
+                xem trước khung sườn → admin review course rỗng, vô nghĩa.
+                Flow đúng: Lưu nháp → Upload nội dung (dẫn sang lesson
+                editor) → upload video/SCORM/quiz → bấm "Gửi duyệt" ở
+                header lesson editor khi bài giảng đầy đủ. */}
             <Button
               onClick={() => {
                 const firstLessonId = chapters[0]?.lessons[0]?.id;
@@ -1207,6 +1193,16 @@ function Step4Preview({
   const totalLessons = chapters.reduce((sum, c) => sum + c.lessons.length, 0);
   return (
     <div className="space-y-4">
+      {/* Phase 18 — hướng dẫn flow đúng: upload nội dung rồi mới gửi duyệt */}
+      <div className="rounded-card border border-primary/30 bg-primary/5 p-3 text-xs text-muted">
+        <span className="font-semibold text-primary">Lưu ý:</span> Đây là bước xem trước{' '}
+        <span className="font-semibold">khung sườn</span>. Bấm{' '}
+        <span className="font-semibold">Upload nội dung</span> để vào lesson editor và upload video
+        / SCORM / quiz / WebGL cho từng bài. Sau khi hoàn thiện, bấm{' '}
+        <span className="font-semibold">Gửi duyệt</span> ở header lesson editor để admin review bài
+        giảng đầy đủ.
+      </div>
+
       <div className="rounded-card border border-border bg-surface p-4">
         <div className="flex gap-4">
           {thumbnailUrl && (

@@ -29,7 +29,6 @@ import {
   Pencil,
   Plus,
   Save,
-  Send,
   Trash2,
   Upload,
   X,
@@ -231,17 +230,11 @@ export default function EditCoursePage() {
     router.push('/instructor/courses');
   };
 
-  const handleSubmitForReview = async () => {
-    if (!courseId) return;
-    try {
-      await coursesApi.updateStatus(courseId, 'SUBMIT', accessToken!);
-      toast.success('Đã gửi khoá học cho admin duyệt');
-      router.push('/instructor/courses');
-    } catch (e) {
-      const msg = e instanceof ApiError ? e.message : 'Gửi duyệt thất bại';
-      toast.error(msg);
-    }
-  };
+  // Phase 18 — bỏ handleSubmitForReview khỏi wizard edit. Flow mới:
+  // 1) Soạn cấu trúc ở wizard → 2) click "Upload nội dung" → 3) upload
+  // video/SCORM/quiz ở lesson editor → 4) bấm "Gửi duyệt" ở header
+  // lesson editor khi bài đầy đủ. Tránh instructor gửi duyệt course
+  // rỗng nội dung ngay từ wizard.
 
   // Phase 18 — huỷ gửi duyệt (PENDING_REVIEW → DRAFT) khi instructor
   // phát hiện lỗi trước khi admin review.
@@ -548,7 +541,9 @@ export default function EditCoursePage() {
     );
   }
 
-  const isDraft = status === 'DRAFT';
+  // Phase 18 — `isDraft` không còn dùng sau khi bỏ nút "Gửi duyệt Admin"
+  // ở Step 3 (flow đúng: submit từ lesson editor sau khi upload xong).
+  // Giữ `isPendingReview` cho nút "Huỷ gửi duyệt".
   const isPendingReview = status === 'PENDING_REVIEW';
 
   return (
@@ -643,14 +638,14 @@ export default function EditCoursePage() {
               <Save className="h-4 w-4" />
               Lưu thay đổi
             </Button>
-            {isDraft && (
-              <Button variant="outline" onClick={handleSubmitForReview}>
-                <Send className="h-4 w-4" />
-                Gửi duyệt Admin
-              </Button>
-            )}
-            {/* Phase 18 — huỷ gửi duyệt khi còn PENDING_REVIEW, quay về DRAFT
-                để tiếp tục chỉnh sửa cấu trúc (sửa/xoá/chuyển chương bài). */}
+            {/* Phase 18 — BỎ nút "Gửi duyệt Admin" ở bước này vì course
+                CHƯA có nội dung thật (video/SCORM/quiz/WebGL). Nếu gửi
+                duyệt bây giờ admin sẽ review khung sườn rỗng → vô nghĩa.
+                Thay bằng "Upload nội dung" làm primary action dẫn sang
+                lesson editor; instructor sẽ bấm "Gửi duyệt" ở header
+                lesson editor SAU KHI hoàn thiện nội dung.
+                Huỷ gửi duyệt (PENDING_REVIEW → DRAFT) vẫn giữ ở đây
+                vì user có thể đang xem tổng quan rồi quyết định rút. */}
             {isPendingReview && (
               <Button variant="outline" onClick={handleWithdrawSubmit}>
                 <ChevronLeft className="h-4 w-4" />
@@ -1311,6 +1306,16 @@ function Step3Preview({
   const totalLessons = chapters.reduce((sum, c) => sum + c.lessons.length, 0);
   return (
     <div className="space-y-4">
+      {/* Phase 18 — hướng dẫn flow đúng: upload nội dung rồi mới gửi duyệt */}
+      <div className="rounded-card border border-primary/30 bg-primary/5 p-3 text-xs text-muted">
+        <span className="font-semibold text-primary">Lưu ý:</span> Đây là bước xem trước{' '}
+        <span className="font-semibold">khung sườn</span>. Bấm{' '}
+        <span className="font-semibold">Upload nội dung</span> để vào lesson editor và upload video
+        / SCORM / quiz / WebGL cho từng bài. Sau khi hoàn thiện, bấm{' '}
+        <span className="font-semibold">Gửi duyệt</span> ở header lesson editor để admin review bài
+        giảng đầy đủ.
+      </div>
+
       <div className="rounded-card border border-border bg-surface p-4">
         <div className="flex gap-4">
           {thumbnailUrl && (
