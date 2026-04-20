@@ -63,8 +63,11 @@ export class ChaptersController {
     return this.chapters.reorder({ id: user.sub, role: user.role }, id, dto.newOrder);
   }
 
+  // Phase 18 — cho INSTRUCTOR xoá chapter của course mình khi:
+  //   course.status === DRAFT (chưa gửi duyệt) + không có enrollment nào.
+  // Service tự check thêm điều kiện đó; ADMIN+ vẫn bypass như cũ.
   @Delete('chapters/:id')
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @Roles(Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
   remove(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     return this.chapters.remove({ id: user.sub, role: user.role }, id);
   }

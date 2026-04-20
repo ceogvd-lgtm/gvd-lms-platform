@@ -21,13 +21,17 @@ import { Button, Card, CardContent, Skeleton } from '@lms/ui';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft,
+  Check,
   ChevronLeft,
   ChevronRight,
   GripVertical,
+  Pencil,
   Plus,
   Save,
   Send,
+  Trash2,
   Upload,
+  X,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -334,6 +338,103 @@ export default function EditCoursePage() {
     );
   };
 
+  // ---------- Rename / Delete handlers (Phase 18) ----------
+  // Optimistic: patch local state trước, rollback nếu API fail. UX mượt
+  // ngay cả trên mạng chậm; toast.error hiện rollback thông báo rõ.
+  const handleRenameChapter = async (id: string, newTitle: string) => {
+    const trimmed = newTitle.trim();
+    if (!trimmed) {
+      toast.error('Tên chương không được để trống');
+      return;
+    }
+    const prevState = chapters;
+    setChapters((prev) => prev.map((c) => (c.id === id ? { ...c, title: trimmed } : c)));
+    try {
+      await chaptersApi.update(id, { title: trimmed }, accessToken!);
+      toast.success('Đã cập nhật tên chương');
+      setSavedAt(new Date());
+    } catch (err) {
+      setChapters(prevState); // rollback
+      const msg = err instanceof ApiError ? err.message : 'Đổi tên thất bại';
+      toast.error(msg);
+    }
+  };
+
+  const handleDeleteChapter = async (chapter: DraftChapter) => {
+    const lessonCount = chapter.lessons.length;
+    const confirmMsg =
+      `Xoá chương "${chapter.title}"?\n\n` +
+      (lessonCount > 0 ? `Tất cả ${lessonCount} bài học trong chương này sẽ bị xoá theo.\n` : '') +
+      'Không thể hoàn tác.';
+    if (!confirm(confirmMsg)) return;
+
+    const prevState = chapters;
+    setChapters((prev) => prev.filter((c) => c.id !== chapter.id));
+    try {
+      await chaptersApi.remove(chapter.id, accessToken!);
+      toast.success('Đã xoá chương');
+      setSavedAt(new Date());
+    } catch (err) {
+      setChapters(prevState); // rollback
+      const msg = err instanceof ApiError ? err.message : 'Xoá thất bại';
+      toast.error(msg);
+    }
+  };
+
+  const handleRenameLesson = async (chapterId: string, lessonId: string, newTitle: string) => {
+    const trimmed = newTitle.trim();
+    if (!trimmed) {
+      toast.error('Tên bài giảng không được để trống');
+      return;
+    }
+    const prevState = chapters;
+    setChapters((prev) =>
+      prev.map((c) =>
+        c.id !== chapterId
+          ? c
+          : {
+              ...c,
+              lessons: c.lessons.map((l) => (l.id === lessonId ? { ...l, title: trimmed } : l)),
+            },
+      ),
+    );
+    try {
+      await lessonsApi.update(lessonId, { title: trimmed }, accessToken!);
+      toast.success('Đã cập nhật tên bài giảng');
+      setSavedAt(new Date());
+    } catch (err) {
+      setChapters(prevState);
+      const msg = err instanceof ApiError ? err.message : 'Đổi tên thất bại';
+      toast.error(msg);
+    }
+  };
+
+  const handleDeleteLesson = async (chapterId: string, lesson: DraftLesson) => {
+    if (
+      !confirm(
+        `Xoá bài giảng "${lesson.title}"?\n\n` +
+          'Toàn bộ nội dung (video, quiz, tài liệu) sẽ bị xoá theo.\nKhông thể hoàn tác.',
+      )
+    ) {
+      return;
+    }
+    const prevState = chapters;
+    setChapters((prev) =>
+      prev.map((c) =>
+        c.id !== chapterId ? c : { ...c, lessons: c.lessons.filter((l) => l.id !== lesson.id) },
+      ),
+    );
+    try {
+      await lessonsApi.remove(lesson.id, accessToken!);
+      toast.success('Đã xoá bài giảng');
+      setSavedAt(new Date());
+    } catch (err) {
+      setChapters(prevState);
+      const msg = err instanceof ApiError ? err.message : 'Xoá thất bại';
+      toast.error(msg);
+    }
+  };
+
   // ---------- Render ----------
   if (!courseId) {
     return (
@@ -432,6 +533,11 @@ export default function EditCoursePage() {
               onAddLesson={addLesson}
               onChapterDragEnd={handleChapterDragEnd}
               onLessonDragEnd={handleLessonDragEnd}
+              onRenameChapter={handleRenameChapter}
+              onDeleteChapter={handleDeleteChapter}
+              onRenameLesson={handleRenameLesson}
+              onDeleteLesson={handleDeleteLesson}
+              canDelete={status === 'DRAFT'}
               sensors={sensors}
             />
           )}
@@ -609,6 +715,11 @@ function Step2Structure({
   onAddLesson,
   onChapterDragEnd,
   onLessonDragEnd,
+  onRenameChapter,
+  onDeleteChapter,
+  onRenameLesson,
+  onDeleteLesson,
+  canDelete,
   sensors,
 }: {
   chapters: DraftChapter[];
@@ -616,6 +727,12 @@ function Step2Structure({
   onAddLesson: (chapterId: string) => void;
   onChapterDragEnd: (e: DragEndEvent) => void;
   onLessonDragEnd: (chapterId: string, e: DragEndEvent) => void;
+  onRenameChapter: (id: string, newTitle: string) => Promise<void>;
+  onDeleteChapter: (chapter: DraftChapter) => Promise<void>;
+  onRenameLesson: (chapterId: string, lessonId: string, newTitle: string) => Promise<void>;
+  onDeleteLesson: (chapterId: string, lesson: DraftLesson) => Promise<void>;
+  /** Phase 18 — chỉ cho phép xoá khi course còn DRAFT (BE cũng check). */
+  canDelete: boolean;
   sensors: ReturnType<typeof useSensors>;
 }) {
   const chapterIds = useMemo(() => chapters.map((c) => c.id), [chapters]);
@@ -625,6 +742,13 @@ function Step2Structure({
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted">
           Kéo-thả để sắp xếp lại thứ tự. Mỗi chương cần ít nhất 1 bài giảng.
+          {canDelete ? (
+            <span className="ml-1 text-xs italic">Hover vào chương/bài để sửa tên hoặc xoá.</span>
+          ) : (
+            <span className="ml-1 text-xs italic">
+              Khoá học đã gửi duyệt — không xoá được (chỉ sửa tên).
+            </span>
+          )}
         </p>
         <Button variant="outline" onClick={onAddChapter}>
           <Plus className="h-4 w-4" />
@@ -654,6 +778,11 @@ function Step2Structure({
                   index={idx}
                   onAddLesson={() => onAddLesson(ch.id)}
                   onLessonDragEnd={(e) => onLessonDragEnd(ch.id, e)}
+                  onRename={(newTitle) => onRenameChapter(ch.id, newTitle)}
+                  onDelete={() => onDeleteChapter(ch)}
+                  onRenameLesson={(lessonId, newTitle) => onRenameLesson(ch.id, lessonId, newTitle)}
+                  onDeleteLesson={(lesson) => onDeleteLesson(ch.id, lesson)}
+                  canDelete={canDelete}
                   sensors={sensors}
                 />
               ))}
@@ -670,12 +799,22 @@ function SortableChapter({
   index,
   onAddLesson,
   onLessonDragEnd,
+  onRename,
+  onDelete,
+  onRenameLesson,
+  onDeleteLesson,
+  canDelete,
   sensors,
 }: {
   chapter: DraftChapter;
   index: number;
   onAddLesson: () => void;
   onLessonDragEnd: (e: DragEndEvent) => void;
+  onRename: (newTitle: string) => Promise<void>;
+  onDelete: () => Promise<void>;
+  onRenameLesson: (lessonId: string, newTitle: string) => Promise<void>;
+  onDeleteLesson: (lesson: DraftLesson) => Promise<void>;
+  canDelete: boolean;
   sensors: ReturnType<typeof useSensors>;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -688,8 +827,48 @@ function SortableChapter({
   };
   const lessonIds = useMemo(() => chapter.lessons.map((l) => l.id), [chapter.lessons]);
 
+  // Phase 18 — inline-edit state. Cục bộ cho chapter này, không bị reset
+  // khi parent re-render nhờ React preserve state theo key (chapter.id).
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(chapter.title);
+  const [busy, setBusy] = useState(false);
+
+  const startEdit = () => {
+    setEditValue(chapter.title);
+    setIsEditing(true);
+  };
+  const cancelEdit = () => {
+    setEditValue(chapter.title);
+    setIsEditing(false);
+  };
+  const saveEdit = async () => {
+    if (editValue.trim() === chapter.title || !editValue.trim()) {
+      setIsEditing(false);
+      return;
+    }
+    setBusy(true);
+    try {
+      await onRename(editValue);
+    } finally {
+      setBusy(false);
+      setIsEditing(false);
+    }
+  };
+  const handleDelete = async () => {
+    setBusy(true);
+    try {
+      await onDelete();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <div ref={setNodeRef} style={style} className="rounded-card border border-border bg-surface">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="group rounded-card border border-border bg-surface"
+    >
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
         <button
           type="button"
@@ -701,7 +880,85 @@ function SortableChapter({
           <GripVertical className="h-4 w-4" />
         </button>
         <span className="text-xs font-mono text-muted">#{index + 1}</span>
-        <h4 className="flex-1 text-sm font-semibold">{chapter.title}</h4>
+        {isEditing ? (
+          <input
+            type="text"
+            value={editValue}
+            ref={(el) => {
+              // Phase 18 — auto-focus khi bật inline edit (jsx-a11y không cho
+              // dùng autoFocus prop trực tiếp → dùng callback ref thay thế).
+              if (el && document.activeElement !== el) el.focus();
+            }}
+            disabled={busy}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void saveEdit();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelEdit();
+              }
+            }}
+            className="flex-1 rounded border border-primary bg-background px-2 py-1 text-sm font-semibold outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        ) : (
+          <h4 className="flex-1 text-sm font-semibold">{chapter.title}</h4>
+        )}
+        {/* Phase 18 — action icons: edit + delete. Desktop hiện khi hover
+            (nhóm group/group-hover); mobile hiện luôn (md:opacity-0) */}
+        <div
+          className={
+            'flex items-center gap-1 transition-opacity md:opacity-0 md:group-hover:opacity-100 ' +
+            (isEditing ? 'md:opacity-100' : '')
+          }
+        >
+          {isEditing ? (
+            <>
+              <button
+                type="button"
+                onClick={saveEdit}
+                disabled={busy}
+                className="inline-flex h-7 w-7 items-center justify-center rounded text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                title="Lưu (Enter)"
+              >
+                <Check className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={cancelEdit}
+                disabled={busy}
+                className="inline-flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-surface-2 disabled:opacity-50"
+                title="Huỷ (Esc)"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={startEdit}
+                disabled={busy}
+                className="inline-flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-primary/10 hover:text-primary disabled:opacity-50"
+                title="Sửa tên chương"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={busy || !canDelete}
+                className="inline-flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-rose-500/10 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted"
+                title={
+                  canDelete ? 'Xoá chương' : 'Không xoá được — khoá học đã gửi duyệt / có học viên'
+                }
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
+        </div>
         <Button size="sm" variant="ghost" onClick={onAddLesson}>
           <Plus className="h-3.5 w-3.5" />
           Thêm bài
@@ -719,7 +976,14 @@ function SortableChapter({
             <SortableContext items={lessonIds} strategy={verticalListSortingStrategy}>
               <ul className="space-y-1">
                 {chapter.lessons.map((l, lidx) => (
-                  <SortableLesson key={l.id} lesson={l} index={lidx} />
+                  <SortableLesson
+                    key={l.id}
+                    lesson={l}
+                    index={lidx}
+                    onRename={(newTitle) => onRenameLesson(l.id, newTitle)}
+                    onDelete={() => onDeleteLesson(l)}
+                    canDelete={canDelete}
+                  />
                 ))}
               </ul>
             </SortableContext>
@@ -730,10 +994,57 @@ function SortableChapter({
   );
 }
 
-function SortableLesson({ lesson, index }: { lesson: DraftLesson; index: number }) {
+function SortableLesson({
+  lesson,
+  index,
+  onRename,
+  onDelete,
+  canDelete,
+}: {
+  lesson: DraftLesson;
+  index: number;
+  onRename: (newTitle: string) => Promise<void>;
+  onDelete: () => Promise<void>;
+  canDelete: boolean;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: lesson.id,
   });
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(lesson.title);
+  const [busy, setBusy] = useState(false);
+
+  const startEdit = () => {
+    setEditValue(lesson.title);
+    setIsEditing(true);
+  };
+  const cancelEdit = () => {
+    setEditValue(lesson.title);
+    setIsEditing(false);
+  };
+  const saveEdit = async () => {
+    if (editValue.trim() === lesson.title || !editValue.trim()) {
+      setIsEditing(false);
+      return;
+    }
+    setBusy(true);
+    try {
+      await onRename(editValue);
+    } finally {
+      setBusy(false);
+      setIsEditing(false);
+    }
+  };
+  const handleDelete = async () => {
+    setBusy(true);
+    try {
+      await onDelete();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <li
       ref={setNodeRef}
@@ -742,7 +1053,7 @@ function SortableLesson({ lesson, index }: { lesson: DraftLesson; index: number 
         transition,
         opacity: isDragging ? 0.4 : 1,
       }}
-      className="flex items-center gap-2 rounded border border-transparent px-2 py-1.5 hover:border-border hover:bg-surface-2/40"
+      className="group/lesson flex items-center gap-2 rounded border border-transparent px-2 py-1.5 hover:border-border hover:bg-surface-2/40"
     >
       <button
         type="button"
@@ -754,7 +1065,82 @@ function SortableLesson({ lesson, index }: { lesson: DraftLesson; index: number 
         <GripVertical className="h-3 w-3" />
       </button>
       <span className="text-xs font-mono text-muted">{index + 1}.</span>
-      <span className="flex-1 text-sm">{lesson.title}</span>
+      {isEditing ? (
+        <input
+          type="text"
+          value={editValue}
+          ref={(el) => {
+            if (el && document.activeElement !== el) el.focus();
+          }}
+          disabled={busy}
+          onChange={(e) => setEditValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void saveEdit();
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              cancelEdit();
+            }
+          }}
+          className="flex-1 rounded border border-primary bg-background px-2 py-0.5 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+        />
+      ) : (
+        <span className="flex-1 text-sm">{lesson.title}</span>
+      )}
+      {/* Phase 18 — icons: desktop hiện khi hover, mobile hiện luôn */}
+      <div
+        className={
+          'flex items-center gap-0.5 transition-opacity md:opacity-0 md:group-hover/lesson:opacity-100 ' +
+          (isEditing ? 'md:opacity-100' : '')
+        }
+      >
+        {isEditing ? (
+          <>
+            <button
+              type="button"
+              onClick={saveEdit}
+              disabled={busy}
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+              title="Lưu"
+            >
+              <Check className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={cancelEdit}
+              disabled={busy}
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted hover:bg-surface-2 disabled:opacity-50"
+              title="Huỷ"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={startEdit}
+              disabled={busy}
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted hover:bg-primary/10 hover:text-primary disabled:opacity-50"
+              title="Sửa tên bài"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={busy || !canDelete}
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted hover:bg-rose-500/10 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted"
+              title={
+                canDelete ? 'Xoá bài giảng' : 'Không xoá được — khoá học đã gửi duyệt / có học viên'
+              }
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </>
+        )}
+      </div>
       <span
         className={
           'rounded-full px-2 py-0.5 text-[10px] font-semibold ' +

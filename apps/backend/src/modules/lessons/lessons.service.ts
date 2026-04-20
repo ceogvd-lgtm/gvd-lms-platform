@@ -167,27 +167,72 @@ export class LessonsService {
   }
 
   // =====================================================
-  // DELETE (soft, ADMIN+ only) — CLAUDE.md: INSTRUCTOR TUYỆT ĐỐI KHÔNG XOÁ
+  // DELETE (soft) — ADMIN+ bất kỳ lúc nào; INSTRUCTOR chỉ khi course
+  // còn DRAFT + chưa có enrollment + chưa có LessonProgress (Phase 18).
+  //
+  // Rule nới lỏng cho INSTRUCTOR: giai đoạn soạn thảo ban đầu hay bấm
+  // nhầm tạo ra bài thừa; trước đây phải quay lại tạo lại từ đầu mất
+  // thời gian. Giờ cho xoá ở DRAFT, sau khi gửi duyệt thì quay về rule
+  // cũ (admin-only) để bảo toàn lịch sử học viên.
   // =====================================================
   async softDelete(actor: Actor, id: string, meta: RequestMeta) {
-    if (actor.role !== Role.ADMIN && actor.role !== Role.SUPER_ADMIN) {
-      throw new ForbiddenException('Chỉ quản trị viên mới có quyền xoá bài giảng');
-    }
-
     // Phase 18 — select thêm các URL files để có thể cleanup khỏi MinIO
     // sau khi xoá record. Dùng `include` để join sang theoryContent /
     // practiceContent / attachments trong 1 roundtrip.
+    // Ngoài ra load course (status + enrollments count) + progress count
+    // để quyết định INSTRUCTOR có được xoá hay không.
     const lesson = await this.prisma.client.lesson.findUnique({
       where: { id },
       include: {
         theoryContent: { select: { contentUrl: true } },
         practiceContent: { select: { webglUrl: true } },
         attachments: { select: { fileUrl: true } },
+        chapter: {
+          select: {
+            course: {
+              select: {
+                instructorId: true,
+                status: true,
+                _count: { select: { enrollments: true } },
+              },
+            },
+          },
+        },
+        _count: { select: { progress: true } },
       },
     });
     if (!lesson) throw new NotFoundException('Không tìm thấy bài giảng');
     if (lesson.isDeleted) {
       throw new NotFoundException('Bài giảng đã bị xoá');
+    }
+
+    const course = lesson.chapter.course;
+
+    // INSTRUCTOR extra rules: chỉ xoá trong course của mình, còn DRAFT,
+    // chưa có enrollment + chưa có tiến độ học viên nào.
+    if (actor.role === Role.INSTRUCTOR) {
+      if (course.instructorId !== actor.id) {
+        throw new ForbiddenException('Bạn không có quyền xoá bài giảng này');
+      }
+      if (course.status !== 'DRAFT') {
+        throw new BadRequestException(
+          `Không thể xoá — khoá học đang ở trạng thái ${course.status}. ` +
+            `Chỉ xoá được khi còn Nháp. Liên hệ admin nếu cần xử lý.`,
+        );
+      }
+      if (course._count.enrollments > 0) {
+        throw new BadRequestException(
+          `Không thể xoá — đã có ${course._count.enrollments} học viên đăng ký khoá học. ` +
+            `Liên hệ admin để xử lý.`,
+        );
+      }
+      if (lesson._count.progress > 0) {
+        throw new BadRequestException(
+          `Không thể xoá — đã có học viên học bài này. Liên hệ admin để xử lý.`,
+        );
+      }
+    } else if (actor.role !== Role.ADMIN && actor.role !== Role.SUPER_ADMIN) {
+      throw new ForbiddenException('Bạn không có quyền xoá bài giảng');
     }
 
     const updated = await this.prisma.client.lesson.update({

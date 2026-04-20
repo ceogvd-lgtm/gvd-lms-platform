@@ -60,9 +60,12 @@ export class LessonsController {
     return this.lessons.reorder({ id: user.sub, role: user.role }, id, dto.newOrder);
   }
 
-  // ---------- DELETE (soft, ADMIN+ only) ----------
+  // ---------- DELETE (soft) ----------
+  // Phase 18 — cho INSTRUCTOR xoá lesson của course mình nếu course còn
+  // DRAFT + không có enrollment + không có LessonProgress. Service check
+  // thêm các điều kiện đó. ADMIN+ bypass như cũ.
   @Delete('lessons/:id')
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @Roles(Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
   softDelete(@CurrentUser() user: JwtPayload, @Param('id') id: string, @Req() req: Request) {
     return this.lessons.softDelete({ id: user.sub, role: user.role }, id, { ip: getClientIp(req) });
   }
