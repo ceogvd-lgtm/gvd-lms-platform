@@ -998,15 +998,34 @@ async function uploadMultipart(
   token: string,
   extraFields: Record<string, string> = {},
 ): Promise<UploadedFile> {
-  const form = new FormData();
-  form.append('file', file);
-  for (const [k, v] of Object.entries(extraFields)) form.append(k, v);
+  // Phase 18 bugfix — upload endpoints trước đây không có auto-refresh.
+  // JWT access token chỉ sống 15 phút → user giữ tab lâu thường gặp 401
+  // "Unauthorized" khi upload PDF/thumbnail. Dùng cùng pattern như api()
+  // wrapper: gọi 1 lần, nếu 401 thì refresh + retry 1 lần.
+  const buildForm = () => {
+    const form = new FormData();
+    form.append('file', file);
+    for (const [k, v] of Object.entries(extraFields)) form.append(k, v);
+    return form;
+  };
+  const doUpload = (authToken: string | null | undefined) =>
+    fetch(`${API_URL}${path}`, {
+      method: 'POST',
+      headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
+      body: buildForm(),
+    });
 
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    body: form,
-  });
+  // FormData là single-use (stream). Phải tạo mới mỗi lần fetch.
+  let res = await doUpload(token || useAuthStore.getState().accessToken);
+  if (res.status === 401) {
+    const newToken = await attemptRefresh();
+    if (newToken) {
+      res = await doUpload(newToken);
+    } else {
+      useAuthStore.getState().clear();
+      redirectToLogin();
+    }
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new ApiError(res.status, text || `Upload failed (${res.status})`);
