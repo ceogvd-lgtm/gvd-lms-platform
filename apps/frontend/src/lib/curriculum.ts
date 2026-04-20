@@ -231,7 +231,18 @@ export const chaptersApi = {
 export interface LessonContext {
   lesson: { id: string; title: string; type: LessonType; order: number };
   chapter: { id: string; title: string; order: number };
-  course: { id: string; title: string };
+  course: {
+    id: string;
+    title: string;
+    /**
+     * Phase 18 — trạng thái FSM của course chứa bài giảng này.
+     * Trang /instructor/lessons/:id/edit dùng để hiện nút "Gửi duyệt"
+     * khi status === 'DRAFT' (để giảng viên submit course sau khi đã
+     * soạn xong hết bài). `status?` optional để tương thích response cũ.
+     */
+    status?: 'DRAFT' | 'PENDING_REVIEW' | 'PUBLISHED' | 'ARCHIVED' | 'REJECTED';
+    instructorId?: string;
+  };
   prev: { id: string; title: string } | null;
   next: { id: string; title: string } | null;
 }

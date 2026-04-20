@@ -688,7 +688,12 @@ export class LessonsService {
             id: true,
             title: true,
             order: true,
-            course: { select: { id: true, title: true } },
+            // Phase 18 — thêm status + instructorId để trang /instructor/
+            // lessons/:id/edit biết course đang DRAFT hay không, từ đó
+            // quyết định có hiển thị nút "Gửi duyệt" ở header hay không.
+            course: {
+              select: { id: true, title: true, status: true, instructorId: true },
+            },
           },
         },
       },
@@ -796,7 +801,13 @@ export interface LessonStudentProgress {
 export interface LessonContext {
   lesson: { id: string; title: string; type: 'THEORY' | 'PRACTICE'; order: number };
   chapter: { id: string; title: string; order: number };
-  course: { id: string; title: string };
+  course: {
+    id: string;
+    title: string;
+    /** Phase 18 — dùng ở `/instructor/lessons/:id/edit` để ẩn/hiện nút "Gửi duyệt" */
+    status?: string;
+    instructorId?: string;
+  };
   prev: { id: string; title: string } | null;
   next: { id: string; title: string } | null;
 }
