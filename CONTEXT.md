@@ -2,9 +2,9 @@
 
 Cập nhật ngày: 20/04/2026
 
-## ĐANG LÀM
+## ĐÃ HOÀN THÀNH TẤT CẢ
 
-Phase 18 — Phần A HOÀN THÀNH. Sẵn sàng deploy production.
+Phase 01-18 đã merge về main + tag v1.0.0. Production ready.
 
 ## ĐÃ HOÀN THÀNH
 
@@ -341,8 +341,10 @@ Phase 18 — Phần A HOÀN THÀNH. Sẵn sàng deploy production.
 - Security tests: **1 suite / 19 tests PASS**
 - E2E tests: **14 tests PASS** (Playwright chromium + mobile-iphone12 viewport)
 - Frontend build: **35 routes built OK**
-- **Tổng: 502 automated tests PASS**
+- **Tổng: 502/502 automated tests PASS**
 
+- Commit: f8a3ae6 | Merge: b5c3593 | Tag: **v1.0.0**
+- Push: origin/main + origin/v1.0.0 OK
 - Xong ngày: 20/04/2026
 
 ## LƯU Ý QUAN TRỌNG
