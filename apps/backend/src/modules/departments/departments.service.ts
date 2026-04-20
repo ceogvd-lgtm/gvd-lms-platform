@@ -69,18 +69,35 @@ export class DepartmentsService {
   }
 
   async remove(id: string) {
-    // Đếm toàn bộ subjects (cả active + soft-deleted). Subject soft-delete
-    // vẫn tham chiếu FK department.id nên phải được giải quyết trước khi
-    // hard-delete department; Prisma sẽ ném P2003 nếu còn bất kỳ hàng con.
+    // Phase 18 — cascade-clean soft-deleted tree khi xoá ngành.
     //
-    // Không cascade trong code vì Subject còn kéo theo Course → Chapter →
-    // Lesson → Quiz/Attempt/Certificate/... — chuỗi FK quá dài để xoá
-    // thủ công an toàn. Nếu business cần hard delete tận gốc, sẽ chuyển
-    // sang soft-delete Department (migration + filter) ở phase sau.
+    // Chuỗi FK: Department → Subject → Course → Chapter → Lesson → Quiz → …
+    // Soft-delete ở UI chỉ set `isDeleted=true` — row con vẫn ở DB, Prisma
+    // P2003 chặn hard-delete Department. Trước đây service throw 400 bắt
+    // user dọn tay qua Prisma Studio → kẹt data khó chịu.
+    //
+    // Giờ: nếu ngành CHỈ còn subject đã soft-delete + mọi course cũng đã
+    // soft-delete + KHÔNG có certificate đã phát (Certificate FK không
+    // cascade), tự cascade hard-delete toàn bộ cây trong 1 transaction.
+    // Còn active hoặc có certificate → vẫn reject kèm thông báo rõ ràng.
     const dept = await this.prisma.client.department.findUnique({
       where: { id },
       include: {
-        subjects: { select: { id: true, name: true, isDeleted: true } },
+        subjects: {
+          select: {
+            id: true,
+            name: true,
+            isDeleted: true,
+            courses: {
+              select: {
+                id: true,
+                title: true,
+                isDeleted: true,
+                _count: { select: { certificates: true } },
+              },
+            },
+          },
+        },
       },
     });
     if (!dept) throw new NotFoundException('Không tìm thấy ngành học');
@@ -94,14 +111,65 @@ export class DepartmentsService {
       );
     }
 
+    // Với mỗi soft-deleted subject, kiểm tra các course bên trong:
+    //   - activeCourses: course.isDeleted=false → block (user chưa hoàn
+    //     tất xoá, không được cascade)
+    //   - certificatesIssued: Certificate FK không cascade → phải bảo
+    //     toàn chứng chỉ đã phát, block hard-delete
     if (softDeleted.length > 0) {
-      throw new BadRequestException(
-        `Không thể xoá — ngành còn ${softDeleted.length} môn đã xoá mềm nhưng chưa dọn dữ liệu con (khoá học cũ). ` +
-          `Xử lý qua Prisma Studio hoặc script dọn dẹp trước khi xoá ngành.`,
-      );
+      const activeCourses: Array<{ subject: string; course: string }> = [];
+      const courseWithCerts: Array<{ subject: string; course: string; count: number }> = [];
+      for (const s of softDeleted) {
+        for (const c of s.courses) {
+          if (!c.isDeleted) activeCourses.push({ subject: s.name, course: c.title });
+          if (c._count.certificates > 0) {
+            courseWithCerts.push({
+              subject: s.name,
+              course: c.title,
+              count: c._count.certificates,
+            });
+          }
+        }
+      }
+
+      if (activeCourses.length > 0) {
+        const sample = activeCourses
+          .slice(0, 3)
+          .map((a) => `"${a.course}" (môn ${a.subject})`)
+          .join(', ');
+        throw new BadRequestException(
+          `Không thể xoá — còn ${activeCourses.length} khoá học hoạt động trong các môn đã xoá mềm: ${sample}${activeCourses.length > 3 ? '…' : ''}. Lưu trữ / xoá hết khoá học trước.`,
+        );
+      }
+      if (courseWithCerts.length > 0) {
+        const total = courseWithCerts.reduce((sum, c) => sum + c.count, 0);
+        throw new BadRequestException(
+          `Không thể xoá — ngành còn ${total} chứng chỉ đã phát thuộc ${courseWithCerts.length} khoá học cũ. Không xoá để bảo toàn lịch sử chứng chỉ.`,
+        );
+      }
+
+      // Safe to cascade: gom id courses + subjects, xoá trong 1 transaction.
+      // Course cascade: Chapter/Lesson/Quiz/QuizQuestion/QuizAttempt/
+      // Enrollment/CertificateCriteria sẽ tự xoá theo schema onDelete: Cascade.
+      // QuestionBank.courseId sẽ được set null (SetNull).
+      const subjectIds = softDeleted.map((s) => s.id);
+      const courseIds = softDeleted.flatMap((s) => s.courses.map((c) => c.id));
+
+      await this.prisma.client.$transaction(async (tx) => {
+        if (courseIds.length > 0) {
+          await tx.course.deleteMany({ where: { id: { in: courseIds } } });
+        }
+        await tx.subject.deleteMany({ where: { id: { in: subjectIds } } });
+      });
     }
 
     await this.prisma.client.department.delete({ where: { id } });
-    return { message: 'Đã xoá ngành học' };
+    return {
+      message: 'Đã xoá ngành học',
+      cascaded: {
+        subjects: softDeleted.length,
+        courses: softDeleted.reduce((sum, s) => sum + s.courses.length, 0),
+      },
+    };
   }
 }
