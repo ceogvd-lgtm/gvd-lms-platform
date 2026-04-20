@@ -6,6 +6,7 @@ import { Download, FileText, Loader2, Trash2, UploadCloud } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { AiIndexBadge } from '@/components/instructor/ai-index-badge';
 import { ApiError, uploadApi } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { attachmentsApi, type LessonAttachment } from '@/lib/theory-engine';
@@ -41,6 +42,19 @@ export function AttachmentsManager({ lessonId }: AttachmentsManagerProps) {
     queryKey: ['lesson-attachments', lessonId],
     queryFn: () => attachmentsApi.list(lessonId, accessToken!),
     enabled: !!accessToken,
+    // Phase 18 — refetch mỗi 10s NẾU có PDF mới upload < 2 phút chưa
+    // index xong → badge tự chuyển "Đang xử lý…" → "AI đã học" không cần F5.
+    refetchInterval: (q) => {
+      const items = q.state.data;
+      if (!items) return false;
+      const hasPending = items.some(
+        (a) =>
+          a.mimeType === 'application/pdf' &&
+          !a.aiIndexed &&
+          Date.now() - new Date(a.createdAt).getTime() < 2 * 60 * 1000,
+      );
+      return hasPending ? 10_000 : false;
+    },
   });
 
   const upload = useMutation({
@@ -163,7 +177,11 @@ export function AttachmentsManager({ lessonId }: AttachmentsManagerProps) {
             >
               <FileText className="h-5 w-5 text-primary" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{a.fileName}</p>
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-sm font-medium">{a.fileName}</p>
+                  {/* Phase 18 — badge AI index status, hiển thị cho PDF */}
+                  <AiIndexBadge attachment={a} />
+                </div>
                 <p className="text-xs text-muted">
                   {formatSize(a.fileSize)} · tải lên{' '}
                   {new Date(a.createdAt).toLocaleDateString('vi-VN')}

@@ -287,6 +287,12 @@ model LessonAttachment {
   fileSize  Int
   mimeType  String
   createdAt DateTime @default(now())
+  // Phase 18 — AI auto-index tracking. Khi instructor upload PDF, LessonsService
+  // enqueue `index-lesson-from-url` job → worker chunk + embed + Chroma →
+  // set aiIndexed=true + aiIndexedAt. UI dùng 2 field này để hiện badge
+  // 🤖 AI đã học / ⏳ Đang xử lý / ⚠️ Chưa index.
+  aiIndexed   Boolean   @default(false)
+  aiIndexedAt DateTime?
 
   lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
 

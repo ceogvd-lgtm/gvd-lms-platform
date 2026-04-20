@@ -1,4 +1,5 @@
 import { ProgressStatus, Role } from '@lms/database';
+import { InjectQueue } from '@nestjs/bullmq';
 import {
   BadRequestException,
   forwardRef,
@@ -8,11 +9,14 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import type { Queue } from 'bullmq';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
 import { extractMinioKey } from '../../common/storage/storage.utils';
+import { GEMINI_QUEUE } from '../ai/ai.constants';
+import { QuotaService } from '../ai/quota.service';
 import { CertificatesService } from '../certificates/certificates.service';
 import { ProgressService } from '../progress/progress.service';
 import { XpReason, XpService } from '../students/xp.service';
@@ -48,6 +52,11 @@ export class LessonsService {
     private readonly certificates: CertificatesService,
     // Phase 18 — cleanup file mồ côi trên MinIO khi soft-delete lesson.
     private readonly storage: StorageService,
+    // Phase 18 — auto-index PDF attachments vào ChromaDB cho RAG. Inject
+    // QuotaService để check read-only trước khi enqueue (tránh burn quota
+    // nếu free tier sắp đầy); BullMQ queue dùng chung GEMINI_QUEUE.
+    @InjectQueue(GEMINI_QUEUE) private readonly geminiQueue: Queue,
+    private readonly quota: QuotaService,
   ) {}
 
   private async findLessonWithCourse(id: string) {
@@ -511,6 +520,8 @@ export class LessonsService {
       fileUrl: string;
       fileSize: number;
       mimeType: string;
+      aiIndexed: boolean;
+      aiIndexedAt: Date | null;
       createdAt: Date;
     }>
   > {
@@ -530,6 +541,8 @@ export class LessonsService {
       fileUrl: r.fileUrl,
       fileSize: r.fileSize,
       mimeType: r.mimeType,
+      aiIndexed: r.aiIndexed,
+      aiIndexedAt: r.aiIndexedAt,
       createdAt: r.createdAt,
     }));
   }
@@ -546,6 +559,18 @@ export class LessonsService {
     const row = await this.prisma.client.lessonAttachment.create({
       data: { lessonId, ...payload },
     });
+
+    // Phase 18 — auto-index PDF vào Chroma để Gemini trả lời theo nội dung
+    // giáo trình thật. Fire-and-forget: upload vẫn thành công kể cả khi
+    // quota đầy / queue fail / Chroma down. UI hiển thị aiIndexed flag.
+    if (payload.mimeType === 'application/pdf') {
+      await this.enqueuePdfIndex(row.id, lessonId, payload.fileUrl).catch((err) => {
+        this.logger.warn(
+          `Auto-index enqueue failed (non-fatal): attachmentId=${row.id} ${(err as Error).message}`,
+        );
+      });
+    }
+
     return {
       id: row.id,
       lessonId: row.lessonId,
@@ -553,8 +578,34 @@ export class LessonsService {
       fileUrl: row.fileUrl,
       fileSize: row.fileSize,
       mimeType: row.mimeType,
+      aiIndexed: row.aiIndexed,
+      aiIndexedAt: row.aiIndexedAt,
       createdAt: row.createdAt,
     };
+  }
+
+  /**
+   * Enqueue PDF indexing job if embedding quota cho phép. Không throw —
+   * caller catch bên ngoài để upload vẫn thành công khi AI offline.
+   */
+  private async enqueuePdfIndex(
+    attachmentId: string,
+    lessonId: string,
+    fileUrl: string,
+  ): Promise<void> {
+    const hasQuota = await this.quota.hasQuotaFor('embedding');
+    if (!hasQuota) {
+      this.logger.warn(
+        `AI quota đầy hôm nay — skip auto-index attachmentId=${attachmentId} lessonId=${lessonId}`,
+      );
+      return;
+    }
+    await this.geminiQueue.add(
+      'index-lesson-from-url',
+      { lessonId, fileUrl, attachmentId },
+      { attempts: 3, backoff: { type: 'exponential', delay: 5000 } },
+    );
+    this.logger.log(`Auto-index enqueued: attachmentId=${attachmentId} lessonId=${lessonId}`);
   }
 
   async deleteAttachment(actor: Actor, lessonId: string, attachmentId: string) {

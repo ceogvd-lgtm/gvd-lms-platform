@@ -167,9 +167,11 @@ export class AiController {
 
     // We enqueue the *url* only — the worker fetches the PDF bytes
     // from MinIO itself (avoids pushing large buffers through Redis).
+    // Phase 18 — kèm attachmentId để worker update aiIndexed flag.
     await this.queue.add('index-lesson-from-url', {
       lessonId: dto.lessonId,
       fileUrl: lesson.attachments[0]!.fileUrl,
+      attachmentId: lesson.attachments[0]!.id,
     });
 
     return {
