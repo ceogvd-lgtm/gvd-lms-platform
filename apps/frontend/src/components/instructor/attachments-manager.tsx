@@ -50,8 +50,8 @@ export function AttachmentsManager({ lessonId }: AttachmentsManagerProps) {
         lessonId,
         {
           fileName: file.name,
-          fileUrl: uploaded.url,
-          fileSize: uploaded.size,
+          fileUrl: uploaded.fileUrl,
+          fileSize: uploaded.fileSize,
           mimeType: uploaded.mimeType,
         },
         accessToken!,
