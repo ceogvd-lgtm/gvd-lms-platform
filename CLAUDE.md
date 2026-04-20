@@ -259,6 +259,12 @@ pnpm --filter @lms/ui build           # khi sửa packages/ui
 - lessonId PPE cơ bản: cmnzujyxm000aepnnolixisst
 - Certificate PDF: certificates/{certId}.pdf trong MinIO
 - BullMQ cron at-risk-daily: pattern 0 8 \* \* \* (đã active)
+- Auto-enroll by department: Admin duyệt course → tự enroll student cùng dept
+- Cron auto-enroll-daily: 06:00 AM mỗi ngày (pick up student mới gia nhập department)
+- PATCH /admin/users/:id/department: gán dept cho user
+- POST /enrollments/auto-enroll [ADMIN+]: manual trigger
+- GET /enrollments/stats [ADMIN+]: stats theo department
+- User.departmentId: migration 20260420064407
 - Storage cleanup A: hook xoá file khi xoá entity (subject/course/lesson/user)
 - Storage cleanup B: cron 03:00 CN + manual trigger
 - POST /api/v1/admin/storage-cleanup [SUPER_ADMIN] → manual trigger
