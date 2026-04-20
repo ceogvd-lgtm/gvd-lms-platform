@@ -2,10 +2,12 @@
 
 import { Button, cn } from '@lms/ui';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Filter as FilterIcon, Plus, Search, Sparkles } from 'lucide-react';
+import { Filter as FilterIcon, Plus, Search, Sparkles, UploadCloud } from 'lucide-react';
 import { useState } from 'react';
 
 import { DifficultyBadge } from '@/components/questions/difficulty-badge';
+import { ExcelImportModal } from '@/components/questions/excel-import-modal';
+import { QuestionEditorModal } from '@/components/questions/question-editor-modal';
 import { QuestionTypeBadge } from '@/components/questions/question-type-badge';
 import { TagInput } from '@/components/questions/tag-input';
 import {
@@ -50,6 +52,10 @@ export function QuestionBankPicker({
   const [tags, setTags] = useState<string[]>([]);
   const [randomCount, setRandomCount] = useState<number>(5);
   const [page, setPage] = useState(1);
+  // Phase 18 — instructor có thể tạo câu mới / nhập Excel ngay trong
+  // quiz builder (trước đây phải điều hướng sang /instructor/questions).
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const list = useQuery({
     queryKey: ['bank-picker', { search, type, difficulty, tags, page }],
@@ -74,7 +80,30 @@ export function QuestionBankPicker({
   return (
     <div className="flex h-full min-h-0 flex-col rounded-card border border-border bg-surface">
       <div className="border-b border-border p-3">
-        <p className="mb-2 text-sm font-semibold">Ngân hàng câu hỏi</p>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold">Ngân hàng câu hỏi</p>
+          {/* Actions bar: tạo nhanh + import Excel, không cần rời trang */}
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => setEditorOpen(true)}
+              className="inline-flex h-7 items-center gap-1 rounded-button bg-primary/10 px-2 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20"
+              title="Tạo câu hỏi mới"
+            >
+              <Plus className="h-3 w-3" />
+              Tạo
+            </button>
+            <button
+              type="button"
+              onClick={() => setImportOpen(true)}
+              className="inline-flex h-7 items-center gap-1 rounded-button border border-border bg-surface-2 px-2 text-[11px] font-semibold text-muted transition-colors hover:border-primary hover:text-primary"
+              title="Nhập câu hỏi từ file Excel"
+            >
+              <UploadCloud className="h-3 w-3" />
+              Excel
+            </button>
+          </div>
+        </div>
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
           <input
@@ -244,6 +273,12 @@ export function QuestionBankPicker({
           </div>
         </div>
       )}
+
+      {/* Phase 18 — modals tái sử dụng từ /instructor/questions. Cả hai tự
+          invalidate các cache 'questions' / 'admin-questions' / 'bank-picker'
+          khi thành công → list picker refresh ngay trong quiz builder. */}
+      <QuestionEditorModal open={editorOpen} onOpenChange={setEditorOpen} initial={null} />
+      <ExcelImportModal open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }

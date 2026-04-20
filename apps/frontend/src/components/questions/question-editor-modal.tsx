@@ -143,6 +143,9 @@ export function QuestionEditorModal({
       toast.success(initial ? 'Đã cập nhật câu hỏi' : 'Đã tạo câu hỏi');
       qc.invalidateQueries({ queryKey: ['questions'] });
       qc.invalidateQueries({ queryKey: ['question-tags'] });
+      // Phase 18 — admin page + quiz builder picker dùng cache key khác.
+      qc.invalidateQueries({ queryKey: ['admin-questions'] });
+      qc.invalidateQueries({ queryKey: ['bank-picker'] });
       onSaved?.(q);
       onOpenChange(false);
     },
