@@ -8,6 +8,31 @@ const MINIO_PUBLIC_BASE_URL =
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@lms/ui', '@lms/types'],
+  // Phase 18 — production build tweaks.
+  //
+  // `output: 'standalone'` is gated on NEXT_STANDALONE=1 because the
+  // standalone writer uses Node's `fs.symlink` to hoist deps, and on
+  // Windows without admin that call fails with EPERM. We enable it in
+  // the Docker production Dockerfile (Linux) and in CI; local Windows
+  // dev stays on the default server build.
+  //
+  // `compress: true` gzips HTTP responses from Next itself. nginx does
+  // gzip at the edge too, but keeping it on here means SSR responses
+  // are already compressed before they hit the reverse proxy.
+  //
+  // `poweredByHeader: false` drops the `X-Powered-By: Next.js` header
+  // so we don't advertise the framework version to scanners.
+  ...(process.env.NEXT_STANDALONE === '1' ? { output: 'standalone' } : {}),
+  compress: true,
+  poweredByHeader: false,
+  images: {
+    remotePatterns: [
+      { protocol: 'http', hostname: 'localhost', port: '9000' },
+      { protocol: 'https', hostname: '**.gvdsoft.com.vn' },
+      { protocol: 'https', hostname: 'lh3.googleusercontent.com' },
+    ],
+    formats: ['image/webp'],
+  },
   experimental: {
     typedRoutes: true,
   },

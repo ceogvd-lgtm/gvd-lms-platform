@@ -3,6 +3,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 
 import { AuditService } from '../../common/audit/audit.service';
+import { CacheService } from '../../common/cache/cache.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
 
@@ -46,12 +47,22 @@ describe('SubjectsService', () => {
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     storage = { delete: jest.fn().mockResolvedValue(undefined) };
 
+    const cache = {
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn(),
+      getOrSet: jest.fn(async (_ns: string, _k: string, _ttl: number, f: () => Promise<unknown>) =>
+        f(),
+      ),
+      invalidateNamespace: jest.fn().mockResolvedValue(0),
+    };
+
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         SubjectsService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: audit },
         { provide: StorageService, useValue: storage },
+        { provide: CacheService, useValue: cache },
       ],
     }).compile();
     service = mod.get(SubjectsService);

@@ -1,0 +1,14 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": ".*\\.integration\\.spec\\.ts$",
+  "testTimeout": 30000,
+  "transform": {
+    "^.+\\.(t|j)s$": ["ts-jest", { "isolatedModules": true }]
+  },
+  "moduleNameMapper": {
+    "^@lms/database$": "<rootDir>/../../../packages/database/src/index.ts",
+    "^@lms/types$": "<rootDir>/../../../packages/types/src/index.ts"
+  }
+}

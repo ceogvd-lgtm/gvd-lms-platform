@@ -129,6 +129,8 @@ model User {
   @@index([email])
   @@index([role])
   @@index([departmentId])
+  // Phase 18 — composite for auto-enroll lookup (studentsByDeptRole).
+  @@index([departmentId, role])
   @@map("users")
 }
 
@@ -395,6 +397,8 @@ model QuizAttempt {
 
   @@index([quizId])
   @@index([studentId])
+  // Phase 18 — composite for "my attempts on this quiz" list queries.
+  @@index([studentId, quizId])
   @@map("quiz_attempts")
 }
 
@@ -424,6 +428,9 @@ model CourseEnrollment {
   @@unique([courseId, studentId])
   @@index([studentId])
   @@index([lastActiveAt])
+  // Phase 18 — composite for "my courses" + "progress lookup by (student,course)".
+  // Complements the reverse-order unique index.
+  @@index([studentId, courseId])
   @@map("course_enrollments")
 }
 
@@ -443,6 +450,9 @@ model LessonProgress {
 
   @@unique([lessonId, studentId])
   @@index([studentId])
+  // Phase 18 — composite for calculateCourseProgress sweeps that filter
+  // by (studentId, lessonId IN (...)). Complements the reverse-order unique.
+  @@index([studentId, lessonId])
   @@map("lesson_progress")
 }
 
@@ -732,6 +742,8 @@ model AiChatMessage {
 
   @@index([sessionId])
   @@index([studentId, lessonId])
+  // Phase 18 — chat history pagination by (student, createdAt DESC).
+  @@index([studentId, createdAt])
   @@map("ai_chat_messages")
 }
 

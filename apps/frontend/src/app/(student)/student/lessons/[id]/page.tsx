@@ -3,13 +3,20 @@
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger, cn } from '@lms/ui';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, FileText, Menu } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSwipeable } from 'react-swipeable';
 import { toast } from 'sonner';
 
-import { AiChatWidget } from '@/components/ai/chat-widget';
+// Phase 18 — lazy load the chat widget. It pulls in the markdown renderer
+// + SSE plumbing + syntax highlighter, ~40KB gz. Students don't always
+// open it, so defer until after first paint.
+const AiChatWidget = dynamic(
+  () => import('@/components/ai/chat-widget').then((m) => m.AiChatWidget),
+  { ssr: false },
+);
 import { AiIndexBadge } from '@/components/instructor/ai-index-badge';
 import { DiscussionsTab } from '@/components/student/discussions-tab';
 import { LessonOutline } from '@/components/student/lesson-outline';
