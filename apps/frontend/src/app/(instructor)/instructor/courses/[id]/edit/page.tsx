@@ -21,6 +21,7 @@ import { Button, Card, CardContent, Skeleton } from '@lms/ui';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft,
+  ArrowRightLeft,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -242,6 +243,30 @@ export default function EditCoursePage() {
     }
   };
 
+  // Phase 18 — huỷ gửi duyệt (PENDING_REVIEW → DRAFT) khi instructor
+  // phát hiện lỗi trước khi admin review.
+  const handleWithdrawSubmit = async () => {
+    if (!courseId) return;
+    if (
+      !confirm(
+        'Huỷ gửi duyệt?\n\n' +
+          'Khoá học quay về trạng thái Nháp để tiếp tục chỉnh sửa cấu trúc. Khi xong, gửi duyệt lại.',
+      )
+    ) {
+      return;
+    }
+    try {
+      await coursesApi.updateStatus(courseId, 'WITHDRAW', accessToken!);
+      toast.success('Đã huỷ gửi duyệt — khoá học về trạng thái Nháp');
+      setStatus('DRAFT');
+      // Refresh course data (status change affects everything downstream).
+      await courseQuery.refetch();
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : 'Huỷ gửi duyệt thất bại';
+      toast.error(msg);
+    }
+  };
+
   // ---------- Thumbnail upload ----------
   const handleThumbnailUpload = async (file: File) => {
     setUploading(true);
@@ -409,6 +434,49 @@ export default function EditCoursePage() {
     }
   };
 
+  // Phase 18 — chuyển lesson sang chapter khác cùng course.
+  // UX: giảng viên tạo nhầm 2 chapter → chuyển hết bài sang 1 chapter rồi
+  // xoá chapter rỗng. Chỉ hoạt động khi course DRAFT (BE enforce).
+  const handleMoveLesson = async (
+    fromChapterId: string,
+    lesson: DraftLesson,
+    toChapterId: string,
+  ) => {
+    if (fromChapterId === toChapterId) return;
+    const targetChapter = chapters.find((c) => c.id === toChapterId);
+    if (!targetChapter) return;
+    if (
+      !confirm(
+        `Chuyển bài giảng "${lesson.title}" sang chương "${targetChapter.title}"?\n\n` +
+          'Bài sẽ được đặt ở cuối chương đích.',
+      )
+    ) {
+      return;
+    }
+    const prevState = chapters;
+    // Optimistic: remove from source chapter, append to target
+    setChapters((prev) =>
+      prev.map((c) => {
+        if (c.id === fromChapterId) {
+          return { ...c, lessons: c.lessons.filter((l) => l.id !== lesson.id) };
+        }
+        if (c.id === toChapterId) {
+          return { ...c, lessons: [...c.lessons, lesson] };
+        }
+        return c;
+      }),
+    );
+    try {
+      await lessonsApi.move(lesson.id, toChapterId, accessToken!);
+      toast.success(`Đã chuyển "${lesson.title}" sang chương "${targetChapter.title}"`);
+      setSavedAt(new Date());
+    } catch (err) {
+      setChapters(prevState); // rollback
+      const msg = err instanceof ApiError ? err.message : 'Chuyển chương thất bại';
+      toast.error(msg);
+    }
+  };
+
   const handleDeleteLesson = async (chapterId: string, lesson: DraftLesson) => {
     if (
       !confirm(
@@ -481,6 +549,7 @@ export default function EditCoursePage() {
   }
 
   const isDraft = status === 'DRAFT';
+  const isPendingReview = status === 'PENDING_REVIEW';
 
   return (
     <div className="space-y-6">
@@ -537,6 +606,7 @@ export default function EditCoursePage() {
               onDeleteChapter={handleDeleteChapter}
               onRenameLesson={handleRenameLesson}
               onDeleteLesson={handleDeleteLesson}
+              onMoveLesson={handleMoveLesson}
               canDelete={status === 'DRAFT'}
               sensors={sensors}
             />
@@ -577,6 +647,14 @@ export default function EditCoursePage() {
               <Button variant="outline" onClick={handleSubmitForReview}>
                 <Send className="h-4 w-4" />
                 Gửi duyệt Admin
+              </Button>
+            )}
+            {/* Phase 18 — huỷ gửi duyệt khi còn PENDING_REVIEW, quay về DRAFT
+                để tiếp tục chỉnh sửa cấu trúc (sửa/xoá/chuyển chương bài). */}
+            {isPendingReview && (
+              <Button variant="outline" onClick={handleWithdrawSubmit}>
+                <ChevronLeft className="h-4 w-4" />
+                Huỷ gửi duyệt
               </Button>
             )}
             <Button
@@ -719,6 +797,7 @@ function Step2Structure({
   onDeleteChapter,
   onRenameLesson,
   onDeleteLesson,
+  onMoveLesson,
   canDelete,
   sensors,
 }: {
@@ -731,6 +810,8 @@ function Step2Structure({
   onDeleteChapter: (chapter: DraftChapter) => Promise<void>;
   onRenameLesson: (chapterId: string, lessonId: string, newTitle: string) => Promise<void>;
   onDeleteLesson: (chapterId: string, lesson: DraftLesson) => Promise<void>;
+  /** Phase 18 — chuyển lesson sang chapter khác cùng course */
+  onMoveLesson: (fromChapterId: string, lesson: DraftLesson, toChapterId: string) => Promise<void>;
   /** Phase 18 — chỉ cho phép xoá khi course còn DRAFT (BE cũng check). */
   canDelete: boolean;
   sensors: ReturnType<typeof useSensors>;
@@ -776,12 +857,14 @@ function Step2Structure({
                   key={ch.id}
                   chapter={ch}
                   index={idx}
+                  allChapters={chapters}
                   onAddLesson={() => onAddLesson(ch.id)}
                   onLessonDragEnd={(e) => onLessonDragEnd(ch.id, e)}
                   onRename={(newTitle) => onRenameChapter(ch.id, newTitle)}
                   onDelete={() => onDeleteChapter(ch)}
                   onRenameLesson={(lessonId, newTitle) => onRenameLesson(ch.id, lessonId, newTitle)}
                   onDeleteLesson={(lesson) => onDeleteLesson(ch.id, lesson)}
+                  onMoveLesson={(lesson, toChapterId) => onMoveLesson(ch.id, lesson, toChapterId)}
                   canDelete={canDelete}
                   sensors={sensors}
                 />
@@ -797,23 +880,28 @@ function Step2Structure({
 function SortableChapter({
   chapter,
   index,
+  allChapters,
   onAddLesson,
   onLessonDragEnd,
   onRename,
   onDelete,
   onRenameLesson,
   onDeleteLesson,
+  onMoveLesson,
   canDelete,
   sensors,
 }: {
   chapter: DraftChapter;
   index: number;
+  /** Phase 18 — dropdown "Chuyển sang chương" cần list chapter khác cùng course */
+  allChapters: DraftChapter[];
   onAddLesson: () => void;
   onLessonDragEnd: (e: DragEndEvent) => void;
   onRename: (newTitle: string) => Promise<void>;
   onDelete: () => Promise<void>;
   onRenameLesson: (lessonId: string, newTitle: string) => Promise<void>;
   onDeleteLesson: (lesson: DraftLesson) => Promise<void>;
+  onMoveLesson: (lesson: DraftLesson, toChapterId: string) => Promise<void>;
   canDelete: boolean;
   sensors: ReturnType<typeof useSensors>;
 }) {
@@ -980,8 +1068,11 @@ function SortableChapter({
                     key={l.id}
                     lesson={l}
                     index={lidx}
+                    currentChapterId={chapter.id}
+                    allChapters={allChapters}
                     onRename={(newTitle) => onRenameLesson(l.id, newTitle)}
                     onDelete={() => onDeleteLesson(l)}
+                    onMove={(toChapterId) => onMoveLesson(l, toChapterId)}
                     canDelete={canDelete}
                   />
                 ))}
@@ -997,14 +1088,21 @@ function SortableChapter({
 function SortableLesson({
   lesson,
   index,
+  currentChapterId,
+  allChapters,
   onRename,
   onDelete,
+  onMove,
   canDelete,
 }: {
   lesson: DraftLesson;
   index: number;
+  currentChapterId: string;
+  allChapters: DraftChapter[];
   onRename: (newTitle: string) => Promise<void>;
   onDelete: () => Promise<void>;
+  /** Phase 18 — chuyển lesson sang chapter khác cùng course */
+  onMove: (toChapterId: string) => Promise<void>;
   canDelete: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -1127,6 +1225,43 @@ function SortableLesson({
             >
               <Pencil className="h-3 w-3" />
             </button>
+            {/* Phase 18 — chỉ hiện "Chuyển sang chương" khi có >1 chapter
+                trong course + course DRAFT (canDelete). Dùng native select
+                ẩn đằng sau icon button để không cần thêm dropdown lib. */}
+            {canDelete && allChapters.length > 1 && (
+              <span className="relative inline-flex">
+                <span
+                  className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded text-muted hover:bg-amber-500/10 hover:text-amber-600"
+                  title="Chuyển sang chương khác"
+                >
+                  <ArrowRightLeft className="h-3 w-3 pointer-events-none" />
+                </span>
+                <select
+                  value={currentChapterId}
+                  disabled={busy}
+                  onChange={(e) => {
+                    const target = e.target.value;
+                    if (target && target !== currentChapterId) {
+                      void onMove(target);
+                    }
+                  }}
+                  className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed"
+                  aria-label="Chuyển sang chương khác"
+                  title="Chuyển sang chương khác"
+                >
+                  <option value={currentChapterId} disabled>
+                    Chuyển sang…
+                  </option>
+                  {allChapters
+                    .filter((c) => c.id !== currentChapterId)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        #{allChapters.findIndex((x) => x.id === c.id) + 1} — {c.title}
+                      </option>
+                    ))}
+                </select>
+              </span>
+            )}
             <button
               type="button"
               onClick={handleDelete}

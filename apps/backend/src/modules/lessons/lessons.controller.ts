@@ -60,6 +60,20 @@ export class LessonsController {
     return this.lessons.reorder({ id: user.sub, role: user.role }, id, dto.newOrder);
   }
 
+  // ---------- MOVE to another chapter (Phase 18) ----------
+  // INSTRUCTOR chuyển bài từ chapter này sang chapter khác cùng course
+  // (ví dụ: gộp 2 chapter khi tạo nhầm). Check trong service: owner +
+  // DRAFT + target cùng course.
+  @Patch('lessons/:id/move')
+  @Roles(Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN)
+  move(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() body: { chapterId: string },
+  ) {
+    return this.lessons.moveToChapter({ id: user.sub, role: user.role }, id, body.chapterId);
+  }
+
   // ---------- DELETE (soft) ----------
   // Phase 18 — cho INSTRUCTOR xoá lesson của course mình nếu course còn
   // DRAFT + không có enrollment + không có LessonProgress. Service check

@@ -72,7 +72,13 @@ export interface CourseDetail extends Course {
   chapters: Chapter[];
 }
 
-export type StatusAction = 'SUBMIT' | 'APPROVE' | 'REJECT' | 'ARCHIVE' | 'UNARCHIVE';
+export type StatusAction =
+  | 'SUBMIT'
+  | 'WITHDRAW' // Phase 18 — instructor owner huỷ gửi duyệt (PENDING_REVIEW → DRAFT)
+  | 'APPROVE'
+  | 'REJECT'
+  | 'ARCHIVE'
+  | 'UNARCHIVE';
 
 // =====================================================
 // Departments
@@ -274,6 +280,17 @@ export const lessonsApi = {
 
   remove: (id: string, token: string) =>
     api<{ message: string }>(`/lessons/${id}`, { method: 'DELETE', token }),
+
+  /**
+   * Phase 18 — chuyển lesson sang chapter khác CÙNG course.
+   * Dùng khi instructor gộp 2 chapter bị tách nhầm.
+   */
+  move: (id: string, chapterId: string, token: string) =>
+    api<{ message: string; newChapterId: string }>(`/lessons/${id}/move`, {
+      method: 'PATCH',
+      body: { chapterId },
+      token,
+    }),
 
   /** GET /lessons/:id/context — metadata for outline sidebar + prev/next nav. */
   getContext: (id: string, token: string) =>
