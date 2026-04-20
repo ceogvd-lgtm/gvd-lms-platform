@@ -443,6 +443,8 @@ export function ExcelImportModal({ open, onOpenChange, defaultCourseId }: ExcelI
       qc.invalidateQueries({ queryKey: ['question-tags'] });
       // Phase 18 — modal dùng chung cho /admin/questions → invalidate cả cache admin.
       qc.invalidateQueries({ queryKey: ['admin-questions'] });
+      // Phase 18 — quiz builder picker dùng cache key 'bank-picker'.
+      qc.invalidateQueries({ queryKey: ['bank-picker'] });
       if (res.created > 0) {
         toast.success(`Đã nhập ${res.created} câu hỏi`);
       }
