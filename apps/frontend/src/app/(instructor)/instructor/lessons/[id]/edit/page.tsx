@@ -10,6 +10,7 @@ import {
   FileQuestion,
   History,
   Loader2,
+  RotateCcw,
   Save,
   Send,
 } from 'lucide-react';
@@ -195,6 +196,32 @@ export default function LessonEditorPage({ params }: PageProps) {
     }
   };
 
+  // Phase 18 — huỷ gửi duyệt khi phát hiện lỗi trước admin review.
+  // Course PENDING_REVIEW → DRAFT, lấy lại quyền chỉnh sửa cấu trúc
+  // (sửa/xoá chapter/lesson, chuyển lesson giữa chapter). Admin chưa
+  // review thì không mất gì. Sau khi sửa xong có thể bấm Gửi duyệt lại.
+  const handleWithdrawSubmit = async () => {
+    const courseIdForWithdraw = contextQuery.data?.course.id;
+    if (!courseIdForWithdraw) return;
+    if (
+      !confirm(
+        'Huỷ gửi duyệt khoá học?\n\n' +
+          'Khoá học quay về trạng thái Nháp để bạn tiếp tục chỉnh sửa cấu trúc (sửa/xoá/chuyển chương bài). Khi hoàn chỉnh, gửi duyệt lại.',
+      )
+    ) {
+      return;
+    }
+    try {
+      await coursesApi.updateStatus(courseIdForWithdraw, 'WITHDRAW', accessToken!);
+      toast.success('Đã huỷ gửi duyệt — khoá học về trạng thái Nháp');
+      // Refetch context để badge status + nút đúng
+      void contextQuery.refetch();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Huỷ gửi duyệt thất bại';
+      toast.error(msg);
+    }
+  };
+
   // ---- Sidebar tree: load all chapters of the parent course ----
   const courseId = contextQuery.data?.course.id;
   const tree = useQuery({
@@ -274,6 +301,15 @@ export default function LessonEditorPage({ params }: PageProps) {
               <Button onClick={handleSubmitForReview}>
                 <Send className="h-4 w-4" />
                 Gửi duyệt
+              </Button>
+            )}
+            {/* Phase 18 — nút "Huỷ gửi duyệt" khi course PENDING_REVIEW để
+                instructor lấy lại quyền chỉnh sửa cấu trúc (sửa/xoá/chuyển
+                chương bài). Admin chưa review thì không mất gì. */}
+            {contextQuery.data?.course.status === 'PENDING_REVIEW' && (
+              <Button variant="outline" onClick={handleWithdrawSubmit}>
+                <RotateCcw className="h-4 w-4" />
+                Huỷ gửi duyệt
               </Button>
             )}
             {/* No Delete button — instructor cannot delete lessons (Phase 04 rule) */}

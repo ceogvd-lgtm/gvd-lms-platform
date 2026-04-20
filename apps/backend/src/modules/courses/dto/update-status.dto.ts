@@ -7,6 +7,9 @@ import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
  */
 export const STATUS_ACTIONS = [
   'SUBMIT', // INSTRUCTOR: DRAFT → PENDING_REVIEW
+  'WITHDRAW', // INSTRUCTOR (Phase 18): PENDING_REVIEW → DRAFT — tự hủy
+  //           gửi duyệt khi phát hiện lỗi trước khi admin review; chỉ
+  //           owner. Admin vẫn có REJECT riêng để phản hồi có lý do.
   'APPROVE', // ADMIN+:     PENDING_REVIEW → PUBLISHED
   'REJECT', // ADMIN+:     PENDING_REVIEW → DRAFT
   'ARCHIVE', // owner or ADMIN+

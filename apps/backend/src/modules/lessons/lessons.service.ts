@@ -167,6 +167,96 @@ export class LessonsService {
   }
 
   // =====================================================
+  // MOVE lesson to another chapter within the same course (Phase 18)
+  //
+  // Ví dụ sử dụng: giảng viên tạo nhầm 2 chapter, muốn gộp bằng cách
+  // chuyển hết bài từ chapter #2 sang chapter #1 rồi xoá chapter rỗng.
+  //
+  // Rules:
+  //   - Target chapter phải CÙNG COURSE với lesson (tránh chuyển lung tung)
+  //   - INSTRUCTOR chỉ chuyển được lesson của course mình + course DRAFT
+  //   - Lesson được đặt ở cuối danh sách của target chapter
+  //   - Reorder lại thứ tự cả chapter cũ + chapter mới sau khi move
+  // =====================================================
+  async moveToChapter(
+    actor: Actor,
+    lessonId: string,
+    targetChapterId: string,
+  ): Promise<{ message: string; newChapterId: string }> {
+    const lesson = await this.prisma.client.lesson.findUnique({
+      where: { id: lessonId },
+      include: {
+        chapter: {
+          select: {
+            id: true,
+            courseId: true,
+            course: { select: { id: true, instructorId: true, status: true } },
+          },
+        },
+      },
+    });
+    if (!lesson || lesson.isDeleted) {
+      throw new NotFoundException('Không tìm thấy bài giảng');
+    }
+
+    const srcCourse = lesson.chapter.course;
+    if (actor.role === Role.INSTRUCTOR) {
+      if (srcCourse.instructorId !== actor.id) {
+        throw new ForbiddenException('Bạn không có quyền với bài giảng này');
+      }
+      if (srcCourse.status !== 'DRAFT') {
+        throw new BadRequestException(
+          `Chỉ chuyển bài được khi khoá học còn Nháp. Hiện tại: ${srcCourse.status}`,
+        );
+      }
+    } else if (actor.role !== Role.ADMIN && actor.role !== Role.SUPER_ADMIN) {
+      throw new ForbiddenException('Bạn không có quyền chuyển bài giảng');
+    }
+
+    // Target chapter phải cùng course (tránh chuyển sang khoá khác).
+    const target = await this.prisma.client.chapter.findUnique({
+      where: { id: targetChapterId },
+      select: { id: true, courseId: true },
+    });
+    if (!target) throw new NotFoundException('Không tìm thấy chương đích');
+    if (target.courseId !== srcCourse.id) {
+      throw new BadRequestException('Không chuyển được sang chương ở khoá khác');
+    }
+
+    if (lesson.chapter.id === targetChapterId) {
+      return { message: 'Bài giảng đã ở chương này rồi', newChapterId: targetChapterId };
+    }
+
+    const sourceChapterId = lesson.chapter.id;
+    // Đặt lesson ở cuối target chapter.
+    const lastInTarget = await this.prisma.client.lesson.findFirst({
+      where: { chapterId: targetChapterId, isDeleted: false },
+      orderBy: { order: 'desc' },
+      select: { order: true },
+    });
+    const newOrder = (lastInTarget?.order ?? -1) + 1;
+
+    await this.prisma.client.$transaction(async (tx) => {
+      // 1. Move lesson sang target.
+      await tx.lesson.update({
+        where: { id: lessonId },
+        data: { chapterId: targetChapterId, order: newOrder },
+      });
+      // 2. Compact lại order ở source chapter (các bài còn lại).
+      const remaining = await tx.lesson.findMany({
+        where: { chapterId: sourceChapterId, isDeleted: false },
+        orderBy: { order: 'asc' },
+        select: { id: true },
+      });
+      await Promise.all(
+        remaining.map((l, idx) => tx.lesson.update({ where: { id: l.id }, data: { order: idx } })),
+      );
+    });
+
+    return { message: 'Đã chuyển bài giảng sang chương mới', newChapterId: targetChapterId };
+  }
+
+  // =====================================================
   // DELETE (soft) — ADMIN+ bất kỳ lúc nào; INSTRUCTOR chỉ khi course
   // còn DRAFT + chưa có enrollment + chưa có LessonProgress (Phase 18).
   //

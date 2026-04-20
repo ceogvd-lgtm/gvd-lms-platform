@@ -61,6 +61,7 @@ export class CoursesService {
    * Course status FSM — only these transitions are legal.
    *
    *   DRAFT          ─SUBMIT(instructor)──▶ PENDING_REVIEW
+   *   PENDING_REVIEW ─WITHDRAW(owner)────▶ DRAFT      // Phase 18
    *   PENDING_REVIEW ─APPROVE(admin)─────▶ PUBLISHED
    *   PENDING_REVIEW ─REJECT(admin)──────▶ DRAFT
    *   DRAFT|PUBLISHED─ARCHIVE(owner/adm)─▶ ARCHIVED
@@ -81,6 +82,21 @@ export class CoursesService {
           throw new BadRequestException('Chỉ khoá học ở trạng thái DRAFT mới có thể submit');
         }
         return CourseStatus.PENDING_REVIEW;
+
+      // Phase 18 — instructor tự rút lại gửi duyệt để sửa tiếp (ví dụ
+      // phát hiện chương thừa sau khi submit). Admin chưa kịp review thì
+      // không mất gì; sau khi về DRAFT, có thể edit/delete structure như
+      // bình thường rồi submit lại. Phân biệt với REJECT (admin-initiated).
+      case 'WITHDRAW':
+        if (!this.isOwnerOrAdmin(actor, instructorId)) {
+          throw new ForbiddenException('Chỉ giảng viên sở hữu mới huỷ gửi duyệt được');
+        }
+        if (current !== CourseStatus.PENDING_REVIEW) {
+          throw new BadRequestException(
+            'Chỉ khoá đang chờ duyệt (PENDING_REVIEW) mới có thể huỷ gửi duyệt',
+          );
+        }
+        return CourseStatus.DRAFT;
 
       case 'APPROVE':
         if (!this.isAdminOrAbove(actor.role)) {
