@@ -66,38 +66,46 @@ export class GeminiProcessor extends WorkerHost {
           fileUrl: string;
           attachmentId?: string; // Phase 18 — để update aiIndexed flag
         };
-        // Download the PDF from MinIO's public URL. Kept here (not in
-        // RagService) because the storage layer is a separate concern
-        // — RagService only cares about raw bytes.
-        const resp = await fetch(fileUrl);
-        if (!resp.ok) {
-          this.logger.warn(`fetch failed for ${fileUrl}: ${resp.status}`);
-          return { ok: true, result: { error: 'fetch_failed' } };
-        }
-        const arrayBuf = await resp.arrayBuffer();
-        const buffer = Buffer.from(arrayBuf);
-        const res = await this.rag.indexDocument(lessonId, buffer);
+        // Phase 18 bugfix — wrap mọi step trong try/catch để log đúng
+        // stack trace + step name khi fail (thay vì BullMQ nuốt error
+        // rồi retry 3 lần không ai biết lỗi gì).
+        let step: 'fetch' | 'parse-index' | 'update-db' = 'fetch';
+        try {
+          this.logger.log(
+            `index-lesson start — lesson=${lessonId} attachment=${attachmentId ?? '(none)'} url=${fileUrl.slice(0, 80)}…`,
+          );
+          const resp = await fetch(fileUrl);
+          if (!resp.ok) {
+            this.logger.warn(`fetch failed (${resp.status} ${resp.statusText}) for ${fileUrl}`);
+            return { ok: true, result: { error: 'fetch_failed', status: resp.status } };
+          }
+          const arrayBuf = await resp.arrayBuffer();
+          const buffer = Buffer.from(arrayBuf);
+          this.logger.log(`index-lesson fetched ${buffer.length} bytes, parsing…`);
 
-        // Phase 18 — đánh dấu attachment đã được AI học. Chỉ set flag
-        // khi thực sự có chunks được embed (res.chunks > 0). PDF quét
-        // (không có text) → chunks=0 → flag=false để UI hiện warning.
-        if (attachmentId && res.chunks > 0) {
-          await this.prisma.client.lessonAttachment
-            .update({
+          step = 'parse-index';
+          const res = await this.rag.indexDocument(lessonId, buffer);
+
+          step = 'update-db';
+          if (attachmentId && res.chunks > 0) {
+            await this.prisma.client.lessonAttachment.update({
               where: { id: attachmentId },
               data: { aiIndexed: true, aiIndexedAt: new Date() },
-            })
-            .catch((err) =>
-              this.logger.warn(
-                `Update aiIndexed failed for ${attachmentId}: ${(err as Error).message}`,
-              ),
-            );
-        }
+            });
+          }
 
-        this.logger.log(
-          `index-lesson done — lesson=${lessonId} chunks=${res.chunks} attachment=${attachmentId ?? '(unknown)'}`,
-        );
-        return { ok: true, result: res };
+          this.logger.log(
+            `index-lesson done — lesson=${lessonId} chunks=${res.chunks} attachment=${attachmentId ?? '(none)'}`,
+          );
+          return { ok: true, result: res };
+        } catch (err) {
+          const e = err as Error;
+          this.logger.error(
+            `index-lesson FAILED at step=${step} lesson=${lessonId} attachment=${attachmentId ?? '(none)'}: ${e.message}`,
+            e.stack,
+          );
+          throw err; // BullMQ auto-retry theo config attempts
+        }
       }
       case 'suggest-questions': {
         const { lessonId } = job.data as { lessonId: string };
