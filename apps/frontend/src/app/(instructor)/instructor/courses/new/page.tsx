@@ -220,7 +220,7 @@ export default function CreateCoursePage() {
     setUploading(true);
     try {
       const result = await uploadApi.thumbnail(file, accessToken!);
-      setThumbnailUrl(result.url);
+      setThumbnailUrl(result.fileUrl);
       toast.success('Đã upload thumbnail');
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : 'Upload thất bại';

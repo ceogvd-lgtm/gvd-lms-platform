@@ -243,10 +243,10 @@ export default function EditCoursePage() {
     setUploading(true);
     try {
       const result = await uploadApi.thumbnail(file, accessToken!);
-      setThumbnailUrl(result.url);
+      setThumbnailUrl(result.fileUrl);
       // Patch ngay không đợi auto-save — để thumbnail thấy trên UI.
       if (courseId) {
-        await coursesApi.update(courseId, { thumbnailUrl: result.url } as never, accessToken!);
+        await coursesApi.update(courseId, { thumbnailUrl: result.fileUrl } as never, accessToken!);
         setSavedAt(new Date());
       }
       toast.success('Đã upload thumbnail');

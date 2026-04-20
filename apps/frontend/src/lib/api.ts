@@ -977,11 +977,19 @@ export const practiceContentsApi = {
 // File upload helpers (Phase 06 endpoints, used by Phase 10 wizard + editor)
 // =====================================================
 
+/**
+ * Shape trả về từ mọi /upload/* endpoint (Phase 06).
+ * Backend `UploadService.buildResult()` trả chuẩn 4 field này — frontend
+ * phải đọc ĐÚNG tên để khỏi `undefined` âm thầm (bug 2026-04-20: attachment
+ * PDF silently gửi `fileUrl=undefined` khi reader dùng `.url` → Prisma 500).
+ */
 export interface UploadedFile {
-  url: string;
-  key: string;
-  size: number;
+  fileUrl: string;
+  fileKey: string;
+  fileSize: number;
   mimeType: string;
+  /** WEBGL only — background extraction job id. */
+  extractionJobId?: string;
 }
 
 async function uploadMultipart(
