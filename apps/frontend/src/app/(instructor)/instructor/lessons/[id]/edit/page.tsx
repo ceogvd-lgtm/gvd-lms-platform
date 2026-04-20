@@ -1,9 +1,20 @@
 'use client';
 
-import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from '@lms/ui';
+import { Badge, Button, Tabs, TabsContent, TabsList, TabsTrigger } from '@lms/ui';
 import { useQuery } from '@tanstack/react-query';
-import { AlertCircle, Archive, Eye, FileQuestion, History, Loader2, Save } from 'lucide-react';
+import {
+  AlertCircle,
+  Archive,
+  ArrowLeft,
+  Eye,
+  FileQuestion,
+  History,
+  Loader2,
+  Save,
+  Send,
+} from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -14,7 +25,7 @@ import { PracticeContentEditor } from '@/components/instructor/practice-content-
 import { RichTextEditor, type JSONContent } from '@/components/instructor/rich-text-editor';
 import { ApiError, theoryContentsApi } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
-import { chaptersApi, lessonsApi } from '@/lib/curriculum';
+import { chaptersApi, coursesApi, lessonsApi } from '@/lib/curriculum';
 
 const AUTO_SAVE_INTERVAL = 30_000;
 
@@ -37,8 +48,20 @@ interface PageProps {
  *
  * Per CLAUDE.md INSTRUCTOR rule: NO delete button anywhere on this page.
  */
+const COURSE_STATUS_LABEL: Record<
+  string,
+  { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'error' }
+> = {
+  DRAFT: { label: 'Nháp', tone: 'neutral' },
+  PENDING_REVIEW: { label: 'Chờ duyệt', tone: 'warning' },
+  PUBLISHED: { label: 'Đã xuất bản', tone: 'success' },
+  ARCHIVED: { label: 'Lưu trữ', tone: 'neutral' },
+  REJECTED: { label: 'Bị từ chối', tone: 'error' },
+};
+
 export default function LessonEditorPage({ params }: PageProps) {
   const { id: lessonId } = params;
+  const router = useRouter();
   const accessToken = useAuthStore((s) => s.accessToken);
 
   // Lesson navigation context — we use this to discover the parent
@@ -147,6 +170,31 @@ export default function LessonEditorPage({ params }: PageProps) {
     }
   };
 
+  // Phase 18 — nút "Gửi duyệt" trên header lesson edit (chỉ hiện khi
+  // course còn DRAFT). Giảng viên soạn xong toàn bộ bài giảng (video/
+  // SCORM/quiz/WebGL) → bấm 1 nút ở đây để submit course lên admin duyệt
+  // thay vì phải điều hướng về /instructor/courses/:id/edit step 3.
+  const handleSubmitForReview = async () => {
+    const courseIdForSubmit = contextQuery.data?.course.id;
+    if (!courseIdForSubmit) return;
+    if (
+      !confirm(
+        'Gửi khoá học cho Admin duyệt?\n\n' +
+          'Sau khi gửi, bạn KHÔNG sửa được cấu trúc khoá học đến khi Admin phản hồi. Nội dung bài giảng vẫn có thể chỉnh (lưu bản nháp nội bộ).',
+      )
+    ) {
+      return;
+    }
+    try {
+      await coursesApi.updateStatus(courseIdForSubmit, 'SUBMIT', accessToken!);
+      toast.success('Đã gửi khoá học cho Admin duyệt');
+      router.push('/instructor/courses');
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Gửi duyệt thất bại';
+      toast.error(msg);
+    }
+  };
+
   // ---- Sidebar tree: load all chapters of the parent course ----
   const courseId = contextQuery.data?.course.id;
   const tree = useQuery({
@@ -176,7 +224,28 @@ export default function LessonEditorPage({ params }: PageProps) {
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface px-6 py-3">
-          <div>
+          <div className="min-w-0">
+            {/* Phase 18 — back link + breadcrumb để instructor biết bài giảng
+                này thuộc course nào + trạng thái course, trước đây chỉ hiện
+                "Soạn bài giảng" + ID thô → rất khó navigate. */}
+            {contextQuery.data && (
+              <Link
+                href={`/instructor/courses/${contextQuery.data.course.id}/edit`}
+                className="mb-0.5 inline-flex items-center gap-1 text-xs text-muted transition-colors hover:text-primary"
+              >
+                <ArrowLeft className="h-3 w-3" />
+                Khoá học: {contextQuery.data.course.title}
+                {contextQuery.data.course.status && (
+                  <Badge
+                    tone={COURSE_STATUS_LABEL[contextQuery.data.course.status]?.tone ?? 'neutral'}
+                    className="ml-1"
+                  >
+                    {COURSE_STATUS_LABEL[contextQuery.data.course.status]?.label ??
+                      contextQuery.data.course.status}
+                  </Badge>
+                )}
+              </Link>
+            )}
             <h1 className="text-lg font-bold text-foreground">Soạn bài giảng</h1>
             <p className="text-xs text-muted">ID: {lessonId}</p>
           </div>
@@ -197,6 +266,16 @@ export default function LessonEditorPage({ params }: PageProps) {
               <Archive className="h-4 w-4" />
               Lưu trữ
             </Button>
+            {/* Phase 18 — nút "Gửi duyệt" chỉ hiện khi course còn DRAFT.
+                Sau khi gửi, status chuyển PENDING_REVIEW → admin thấy trong
+                /admin/content review queue. Giảng viên không còn bị kẹt ở
+                trang soạn bài mà phải điều hướng về step 3 wizard edit. */}
+            {contextQuery.data?.course.status === 'DRAFT' && (
+              <Button onClick={handleSubmitForReview}>
+                <Send className="h-4 w-4" />
+                Gửi duyệt
+              </Button>
+            )}
             {/* No Delete button — instructor cannot delete lessons (Phase 04 rule) */}
           </div>
         </header>
