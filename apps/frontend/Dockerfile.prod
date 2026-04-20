@@ -1,0 +1,70 @@
+# =========================================================
+# Phase 18 — Frontend production image (multi-stage, standalone).
+#
+# Builds Next.js with `output: 'standalone'` so the runner only needs
+# the self-contained `.next/standalone` folder + static assets. Final
+# image weighs ~180MB vs ~1.2GB for a full pnpm install runner.
+# =========================================================
+
+ARG NEXT_PUBLIC_API_URL=https://gvdsoft.com.vn/api/v1
+
+# ---- Dependencies ----
+FROM node:20-alpine AS deps
+WORKDIR /app
+RUN apk add --no-cache libc6-compat
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json turbo.json ./
+COPY packages/config/package.json   ./packages/config/
+COPY packages/database/package.json ./packages/database/
+COPY packages/types/package.json    ./packages/types/
+COPY packages/ui/package.json       ./packages/ui/
+COPY apps/frontend/package.json     ./apps/frontend/
+COPY apps/backend/package.json      ./apps/backend/
+
+RUN pnpm install --frozen-lockfile --ignore-scripts
+
+
+# ---- Builder ----
+FROM deps AS builder
+WORKDIR /app
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+# Gate standalone output on the env var (see next.config.mjs).
+ENV NEXT_STANDALONE=1
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY packages ./packages
+COPY apps/frontend ./apps/frontend
+
+RUN pnpm --filter @lms/types build
+RUN pnpm --filter @lms/ui build
+RUN pnpm --filter @lms/frontend build
+
+
+# ---- Runner ----
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+
+RUN addgroup -S nextjs && adduser -S nextjs -G nextjs
+RUN apk add --no-cache wget
+
+# Standalone output bundles only the server + deps it actually uses.
+# Public + static folders are served by Next itself, no nginx rewrite
+# needed here (nginx only does SSL + rate limit at the edge).
+COPY --from=builder --chown=nextjs:nextjs /app/apps/frontend/.next/standalone ./
+COPY --from=builder --chown=nextjs:nextjs /app/apps/frontend/.next/static ./apps/frontend/.next/static
+COPY --from=builder --chown=nextjs:nextjs /app/apps/frontend/public ./apps/frontend/public
+
+USER nextjs
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -q -O- http://localhost:3000 >/dev/null || exit 1
+
+# The standalone build sets up the entry point in the root of the output.
+CMD ["node", "apps/frontend/server.js"]

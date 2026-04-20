@@ -37,6 +37,10 @@ logs/
 # ---------- Testing ----------
 coverage/
 .nyc_output/
+# Phase 18 — Playwright artifacts
+apps/frontend/test-results/
+apps/frontend/playwright-report/
+apps/frontend/playwright/.cache/
 
 # ---------- IDE ----------
 .vscode/*

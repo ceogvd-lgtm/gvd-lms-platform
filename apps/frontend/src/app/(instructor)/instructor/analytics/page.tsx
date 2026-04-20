@@ -12,10 +12,16 @@ import {
 } from '@lms/ui';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Download, Mail } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
-import { ActivityHeatmap } from '@/components/analytics/activity-heatmap';
+// Phase 18 — lazy load heatmap. Pulls in a 7×24 grid + tooltip bundle only
+// when the instructor opens the advanced-analytics tab.
+const ActivityHeatmap = dynamic(
+  () => import('@/components/analytics/activity-heatmap').then((m) => m.ActivityHeatmap),
+  { ssr: false },
+);
 import { ExportPanel } from '@/components/analytics/export-panel';
 import { LessonDifficultyPanel } from '@/components/analytics/lesson-difficulty-panel';
 import { PracticeAnalyticsView } from '@/components/instructor/practice-analytics-view';

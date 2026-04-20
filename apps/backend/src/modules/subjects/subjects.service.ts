@@ -7,12 +7,15 @@ import {
 } from '@nestjs/common';
 
 import { AuditService } from '../../common/audit/audit.service';
+import { CACHE_TTL, CacheService } from '../../common/cache/cache.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
 import { extractMinioKey } from '../../common/storage/storage.utils';
 
 import type { CreateSubjectDto } from './dto/create-subject.dto';
 import type { UpdateSubjectDto } from './dto/update-subject.dto';
+
+const NS = 'subjects';
 
 @Injectable()
 export class SubjectsService {
@@ -22,6 +25,7 @@ export class SubjectsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly storage: StorageService,
+    private readonly cache: CacheService,
   ) {}
 
   // _count chỉ đếm courses đang hoạt động (isDeleted=false) để UI hiển thị
@@ -31,17 +35,20 @@ export class SubjectsService {
   } as const;
 
   async list(departmentId?: string) {
-    return this.prisma.client.subject.findMany({
-      where: {
-        isDeleted: false,
-        ...(departmentId ? { departmentId } : {}),
-      },
-      orderBy: [{ order: 'asc' }, { name: 'asc' }],
-      include: {
-        department: { select: { id: true, name: true, code: true } },
-        _count: this.countActiveCourses,
-      },
-    });
+    const cacheKey = `list:dept=${departmentId ?? 'all'}`;
+    return this.cache.getOrSet(NS, cacheKey, CACHE_TTL.ONE_HOUR, () =>
+      this.prisma.client.subject.findMany({
+        where: {
+          isDeleted: false,
+          ...(departmentId ? { departmentId } : {}),
+        },
+        orderBy: [{ order: 'asc' }, { name: 'asc' }],
+        include: {
+          department: { select: { id: true, name: true, code: true } },
+          _count: this.countActiveCourses,
+        },
+      }),
+    );
   }
 
   async findOne(id: string) {
@@ -68,7 +75,7 @@ export class SubjectsService {
     if (existing) {
       throw new ConflictException(`Code "${dto.code}" đã được sử dụng`);
     }
-    return this.prisma.client.subject.create({
+    const created = await this.prisma.client.subject.create({
       data: {
         departmentId: dto.departmentId,
         name: dto.name,
@@ -78,11 +85,13 @@ export class SubjectsService {
         order: dto.order ?? 0,
       },
     });
+    await this.cache.invalidateNamespace(NS);
+    return created;
   }
 
   async update(id: string, dto: UpdateSubjectDto) {
     await this.findOne(id);
-    return this.prisma.client.subject.update({
+    const updated = await this.prisma.client.subject.update({
       where: { id },
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
@@ -91,6 +100,8 @@ export class SubjectsService {
         ...(dto.order !== undefined && { order: dto.order }),
       },
     });
+    await this.cache.invalidateNamespace(NS);
+    return updated;
   }
 
   /**
@@ -138,6 +149,7 @@ export class SubjectsService {
     // đảm bảo flow xoá entity luôn hoàn tất; orphan file (nếu có) sẽ
     // được cron weekly (Option B) quét và dọn.
     await this.cleanupFile(subject.thumbnailUrl, `subject ${id} thumbnail`);
+    await this.cache.invalidateNamespace(NS);
 
     return { message: 'Đã xoá môn học' };
   }

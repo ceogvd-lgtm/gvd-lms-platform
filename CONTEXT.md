@@ -1,10 +1,10 @@
 # CONTEXT.md — Dự Án LMS
 
-Cập nhật ngày: 18/04/2026
+Cập nhật ngày: 20/04/2026
 
 ## ĐANG LÀM
 
-Phase 18 — Testing, Performance & Deployment
+Phase 18 — Phần A HOÀN THÀNH. Sẵn sàng deploy production.
 
 ## ĐÃ HOÀN THÀNH
 
@@ -248,29 +248,102 @@ Phase 18 — Testing, Performance & Deployment
 - Models Gemini đang dùng:
   - gemini-2.5-flash → chat chính (đã verify hoạt động)
   - gemini-flash-lite-latest → recommendations + weekly report
-  - text-embedding-004 → RAG embeddings
+  - gemini-embedding-001 → RAG embeddings (Phase 18 fix, 004 đã retired)
   - KHÔNG dùng gemini-2.0-flash (429) hoặc gemini-1.5-flash (404 retired)
 - RAG Pipeline: ChromaDB + Gemini embeddings
-  - Index PDF bài học → ChromaDB
-  - Retrieve context khi student hỏi → inject vào prompt
-  - Graceful fallback nếu ChromaDB offline
-- Adaptive Learning: BullMQ daily 1AM
-  - Phân tích điểm yếu → tạo AiRecommendation
-  - Weekly report: BullMQ Monday 8AM → email học viên
+- Adaptive Learning: BullMQ daily 1AM + Weekly report Monday 8AM
 - Rate limit: GEMINI_QUEUE max 10 req/phút | AiQuotaLog track 1500/ngày
-- ChromaDB: Docker container lms-chromadb-dev port 8000 (API v2)
-- Frontend mới:
-  - chat-widget.tsx (floating 380×520, fullscreen <640px, SSE stream)
-  - recommendation-cards.tsx (Row 7 /student/dashboard)
-  - suggested-questions.tsx (chips trong chat widget)
-  - ai-health-panel.tsx (tab "AI & Quota" trong /admin/settings)
-- Pages mở rộng:
-  - /student/lessons/:id → chat widget + suggested questions
-  - /student/dashboard → Row 7 AI recommendations
-  - /admin/settings → tab "AI & Quota"
 - 34 suites / 319 tests PASS | 31 routes build OK
-- Commits: claude/competent-knuth-0aa182 | Merge: feat(ai): phase 17 complete
 - Xong ngày: 18/04/2026
+
+### ✅ Phase 18 — Phần A: Testing + Performance + Deploy (20/04/2026)
+
+**Baseline trước Phase 18**: 44 suites / 412 tests PASS (đã bao gồm auto-enroll commit 000020d)
+
+**ĐỢT 1 — Integration + E2E Tests**:
+
+- Integration tests: 3 suites / 49 tests PASS
+  - auth.integration.spec.ts (13): register → login → 2FA → refresh → logout + brute-force
+  - course.integration.spec.ts (20): APPROVE auto-enroll hook + student self-enroll + quiz grading + WITHDRAW
+  - ai.integration.spec.ts (16): RAG splitText + retrieve fallback + quota + chat SSE
+- E2E tests Playwright: 14 tests PASS
+  - smoke.spec.ts (2): login page + verify page
+  - student-learning.spec.ts (2): dashboard shell + login validation
+  - quiz.spec.ts (2): lesson mount + grade check
+  - certificate.spec.ts (2): valid code + not-found
+  - admin.spec.ts (2): dashboard + users list
+  - instructor.spec.ts (2): dashboard + courses list
+  - responsive.spec.ts (2): iPhone 12 viewport + verify mobile
+- Helpers: test/integration/helpers/{prisma-stub, in-memory-redis, test-auth-app}
+- Scripts mới: `test:integration` + `test:e2e` + `test:e2e:ui`
+
+**ĐỢT 2 — Security + Performance**:
+
+- Security tests: 1 suite / 19 tests PASS
+  - SQL injection (Prisma escape), XSS (storage), IDOR (JWT scope check),
+    JWT tampering, brute-force lockout, RolesGuard (6 cases), file upload mime
+- Script mới: `test:security`
+- DB indexes: migration 20260420080000_phase18_perf_indexes
+  - `users(departmentId, role)` — auto-enroll sweeps
+  - `quiz_attempts(studentId, quizId)` — my attempts lookup
+  - `course_enrollments(studentId, courseId)` — my courses list
+  - `lesson_progress(studentId, lessonId)` — calculateCourseProgress
+  - `ai_chat_messages(studentId, createdAt)` — chat history pagination
+- Redis caching — common/cache/{cache.service, cache.module}
+  - DepartmentsService.list(): TTL 1h + invalidate on create/update/remove
+  - SubjectsService.list(): TTL 1h + invalidate on create/update/remove
+  - Namespace-scoped invalidateNamespace() via SCAN (non-blocking)
+  - CacheService spec: 5 tests PASS
+- Next.js optimization — next.config.mjs
+  - `output: 'standalone'` gated trên NEXT_STANDALONE=1 (Windows symlink perm workaround)
+  - `compress: true` + `poweredByHeader: false`
+  - `images.remotePatterns` cho MinIO + Google avatar
+  - Lazy dynamic import: AiChatWidget, ActivityHeatmap, CohortChart (ssr: false)
+- Health check mở rộng: GET /api/v1/health
+  - Trả về `{status, version, uptime, timestamp, services, metrics}`
+  - Probe: database, redis, minio, chromadb, gemini (quota_warning @1400)
+  - Metrics: dbResponseMs, redisResponseMs, pendingJobs (BullMQ)
+  - 2s timeout per probe, overall: ok/degraded/down
+  - app.controller.spec: +3 tests
+
+**ĐỢT 3 — Docker Production + CI/CD + Backup**:
+
+- docker/docker-compose.prod.yml — 7 services
+  - postgres:16-alpine + healthcheck pg_isready
+  - redis:7-alpine + maxmemory 256mb allkeys-lru + AOF + password
+  - minio:latest + healthcheck
+  - chromadb:latest + healthcheck heartbeat v2
+  - backend: Dockerfile.prod (multi-stage non-root) + /health probe
+  - frontend: Dockerfile.prod (standalone non-root) + HEAD probe
+  - nginx:1.27-alpine + SSL + rate limit + gzip
+  - Networks: internal (backend↔services) + public (nginx only)
+- apps/backend/Dockerfile.prod — multi-stage deps/builder/runner, user `nestjs`
+- apps/frontend/Dockerfile.prod — multi-stage standalone, user `nextjs`
+- docker/nginx/nginx.prod.conf
+  - HTTP→HTTPS redirect + /.well-known/acme-challenge
+  - SSL TLSv1.2+1.3 + HSTS + security headers
+  - Rate limit: /api/v1/auth/ 10r/m | /api/ 30r/m
+  - SSE pass-through: /api/v1/ai/(chat|stream) no buffer
+  - Socket.io upgrade: /socket.io/
+  - Gzip 20+ MIME types + /\_next/static 1y immutable cache
+  - Liveness /healthz on :80
+- .github/workflows/ci.yml — lint + typecheck + test (unit + integration + security) + build + e2e
+- .github/workflows/deploy.yml — GHCR push (Dockerfile.prod) + tag v*.*.\* deploy placeholder
+- scripts/backup.sh — pg_dump daily 2AM + 30d rotation + optional S3
+- scripts/restore.sh — safe restore with confirm prompt + sanity check
+- scripts/deploy.sh — one-shot deploy on VPS (first-run seeds admin)
+- .env.production.example — tất cả vars với comment + secret-gen hints
+
+**Tổng kết test cuối Phase 18 Phần A**:
+
+- Unit tests: **45 suites / 420 tests PASS** (+8 từ baseline: 5 cache + 3 health)
+- Integration tests: **3 suites / 49 tests PASS**
+- Security tests: **1 suite / 19 tests PASS**
+- E2E tests: **14 tests PASS** (Playwright chromium + mobile-iphone12 viewport)
+- Frontend build: **35 routes built OK**
+- **Tổng: 502 automated tests PASS**
+
+- Xong ngày: 20/04/2026
 
 ## LƯU Ý QUAN TRỌNG
 
@@ -317,10 +390,24 @@ Phase 18 — Testing, Performance & Deployment
 - /dashboard tự redirect theo role (homeForRole helper tại apps/frontend/src/lib/auth-redirect.ts)
 - Không còn "Sắp có" với Admin + Instructor (shared dashboard chỉ còn là fallback)
 
-## LỆNH ĐÃ VERIFY
+## LỆNH ĐÃ VERIFY (Phase 18 Phần A baseline)
 
 ```bash
-pnpm --filter @lms/backend test        # 34 suites, 319 tests PASS
-pnpm --filter @lms/frontend build      # 31 routes built
+pnpm --filter @lms/backend test                 # 45 suites, 420 tests PASS
+pnpm --filter @lms/backend test:integration     # 3 suites, 49 tests PASS
+pnpm --filter @lms/backend test:security        # 1 suite, 19 tests PASS
+pnpm --filter @lms/frontend build               # 35 routes built OK
+pnpm --filter @lms/frontend test:e2e            # 14 E2E tests PASS
 pnpm --filter @lms/database exec tsx prisma/seed-demo.ts  # seed demo data
+```
+
+## DEPLOY PRODUCTION
+
+```bash
+# Trên VPS (Ubuntu 22.04):
+cp .env.production.example .env.production
+# Điền secrets (openssl rand -base64 64 cho JWT_SECRET, REFRESH_TOKEN_SECRET)
+./scripts/deploy.sh --first-run      # Seeds SUPER_ADMIN lần đầu
+./scripts/deploy.sh                  # Rolling update về sau
+./scripts/backup.sh                  # Daily dump (cron 2AM)
 ```

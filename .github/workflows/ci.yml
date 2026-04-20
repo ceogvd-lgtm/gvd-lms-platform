@@ -50,7 +50,7 @@ jobs:
       - run: pnpm typecheck
 
   test:
-    name: Test
+    name: Unit tests
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -91,7 +91,9 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @lms/database db:generate
-      - run: pnpm test
+      - run: pnpm --filter @lms/backend test
+      - run: pnpm --filter @lms/backend test:integration
+      - run: pnpm --filter @lms/backend test:security
 
   build:
     name: Build
@@ -109,3 +111,34 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @lms/database db:generate
       - run: pnpm build
+
+  # Phase 18 — Playwright E2E: Next.js dev server + mocked backend.
+  # Runs only on push to main (slower than unit tests, not worth
+  # holding every PR up for).
+  e2e:
+    name: E2E (Playwright)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lms/database db:generate
+      - run: pnpm --filter @lms/types build
+      - run: pnpm --filter @lms/ui build
+      - name: Install Playwright browsers
+        run: pnpm --filter @lms/frontend exec playwright install --with-deps chromium
+      - run: pnpm --filter @lms/frontend test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/frontend/playwright-report
+          retention-days: 7

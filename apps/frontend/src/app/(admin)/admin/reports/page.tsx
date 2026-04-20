@@ -22,10 +22,16 @@ import {
   Send,
   Users,
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { CohortChart } from '@/components/analytics/cohort-chart';
+// Phase 18 — Recharts LineChart is big (~80KB gz). Lazy load so the
+// report index renders without it until the cohort tab is opened.
+const CohortChart = dynamic(
+  () => import('@/components/analytics/cohort-chart').then((m) => m.CohortChart),
+  { ssr: false },
+);
 import { ExportPanel } from '@/components/analytics/export-panel';
 import { analyticsApi } from '@/lib/analytics';
 import {

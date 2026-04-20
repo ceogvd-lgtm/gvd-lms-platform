@@ -8,6 +8,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuditModule } from './common/audit/audit.module';
+import { CacheModule } from './common/cache/cache.module';
 import { MailModule } from './common/mail/mail.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { QueueModule } from './common/queue/queue.module';
@@ -77,6 +78,7 @@ const monorepoRoot = join(__dirname, '..', '..', '..');
     ]),
     PrismaModule,
     RedisModule,
+    CacheModule,
     QueueModule,
     StorageCoreModule,
     MailModule,

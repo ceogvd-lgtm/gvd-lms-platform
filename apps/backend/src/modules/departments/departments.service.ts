@@ -5,25 +5,35 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
+import { CACHE_TTL, CacheService } from '../../common/cache/cache.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 import type { CreateDepartmentDto } from './dto/create-department.dto';
 import type { UpdateDepartmentDto } from './dto/update-department.dto';
 
+// Phase 18 — department list is read hundreds of times per navigation
+// (sidebar tree, course filter, signup form) and rotates on the order
+// of once a month. Worth the one-hour cache.
+const NS = 'departments';
+
 @Injectable()
 export class DepartmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+  ) {}
 
   async list(includeInactive = false) {
-    return this.prisma.client.department.findMany({
-      where: includeInactive ? {} : { isActive: true },
-      orderBy: [{ order: 'asc' }, { name: 'asc' }],
-      include: {
-        // Chỉ đếm môn học active (isDeleted=false) — các môn đã xoá mềm
-        // không hiện trong tree curriculum nên không cần tính vào badge.
-        _count: { select: { subjects: { where: { isDeleted: false } } } },
-      },
-    });
+    const cacheKey = `list:active=${!includeInactive}`;
+    return this.cache.getOrSet(NS, cacheKey, CACHE_TTL.ONE_HOUR, () =>
+      this.prisma.client.department.findMany({
+        where: includeInactive ? {} : { isActive: true },
+        orderBy: [{ order: 'asc' }, { name: 'asc' }],
+        include: {
+          _count: { select: { subjects: { where: { isDeleted: false } } } },
+        },
+      }),
+    );
   }
 
   async findOne(id: string) {
@@ -44,7 +54,7 @@ export class DepartmentsService {
     if (existing) {
       throw new ConflictException(`Code "${dto.code}" đã được sử dụng`);
     }
-    return this.prisma.client.department.create({
+    const created = await this.prisma.client.department.create({
       data: {
         name: dto.name,
         code: dto.code.toUpperCase(),
@@ -53,11 +63,13 @@ export class DepartmentsService {
         isActive: dto.isActive ?? true,
       },
     });
+    await this.cache.invalidateNamespace(NS);
+    return created;
   }
 
   async update(id: string, dto: UpdateDepartmentDto) {
     await this.findOne(id);
-    return this.prisma.client.department.update({
+    const updated = await this.prisma.client.department.update({
       where: { id },
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
@@ -66,6 +78,8 @@ export class DepartmentsService {
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       },
     });
+    await this.cache.invalidateNamespace(NS);
+    return updated;
   }
 
   async remove(id: string) {
@@ -164,6 +178,7 @@ export class DepartmentsService {
     }
 
     await this.prisma.client.department.delete({ where: { id } });
+    await this.cache.invalidateNamespace(NS);
     return {
       message: 'Đã xoá ngành học',
       cascaded: {

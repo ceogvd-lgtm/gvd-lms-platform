@@ -64,6 +64,13 @@ export class StorageService implements OnModuleInit {
     }
   }
 
+  // Phase 18 — cheap probe for /health. Returns true when MinIO answers
+  // bucketExists within the probe timeout. We swallow the bool; the
+  // caller just wants a thrown error on outage.
+  async bucketExists(): Promise<boolean> {
+    return this.client.bucketExists(ROOT_BUCKET);
+  }
+
   /**
    * Bucket policy: public GET for `avatars/*` and `thumbnails/*`, everything
    * else requires a presigned URL. Re-applied on every boot because MinIO

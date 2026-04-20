@@ -2,6 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 
+import { CacheService } from '../../common/cache/cache.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 import { DepartmentsService } from './departments.service';
@@ -41,8 +42,21 @@ describe('DepartmentsService — remove() cascade', () => {
       },
     };
 
+    const cache = {
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn(),
+      getOrSet: jest.fn(async (_ns: string, _k: string, _ttl: number, f: () => Promise<unknown>) =>
+        f(),
+      ),
+      invalidateNamespace: jest.fn().mockResolvedValue(0),
+    };
+
     const mod: TestingModule = await Test.createTestingModule({
-      providers: [DepartmentsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        DepartmentsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CacheService, useValue: cache },
+      ],
     }).compile();
     service = mod.get(DepartmentsService);
   });

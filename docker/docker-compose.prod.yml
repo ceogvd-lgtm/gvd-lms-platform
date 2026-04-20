@@ -1,7 +1,26 @@
-version: '3.9'
-
-# LMS Platform — Production stack
-# NOTE: Secrets should come from env (use `docker compose --env-file .env.production`).
+# =========================================================
+# LMS Platform — PRODUCTION stack
+# ---------------------------------------------------------
+# Usage:
+#   docker compose -f docker/docker-compose.prod.yml \
+#     --env-file .env.production up -d
+#
+# Services:
+#   nginx       — edge reverse proxy, SSL termination, rate limit
+#   frontend    — Next.js 14 (standalone output)
+#   backend     — NestJS API
+#   postgres    — 16-alpine, persisted
+#   redis       — 7-alpine, AOF + 256MB LRU
+#   minio       — object storage
+#   chromadb    — vector store for RAG
+#
+# Networks:
+#   public      — only nginx is exposed
+#   internal    — backend ↔ postgres/redis/minio/chromadb
+#
+# Volumes are named so a `docker compose down` doesn't wipe data.
+# Secrets come from --env-file — never bake them into the image.
+# =========================================================
 
 services:
   postgres:
@@ -13,8 +32,10 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER}']
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -22,9 +43,23 @@ services:
   redis:
     image: redis:7-alpine
     restart: always
-    command: ['redis-server', '--requirepass', '${REDIS_PASSWORD}']
+    # Password + eviction policy + modest cache size. AOF persists the
+    # refresh-token allowlist + at-risk counters across restarts.
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
     volumes:
       - redis_data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD}', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   minio:
     image: minio/minio:latest
@@ -35,35 +70,122 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
     volumes:
       - minio_data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  chromadb:
+    image: chromadb/chroma:latest
+    restart: always
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      ANONYMIZED_TELEMETRY: 'false'
+    networks:
+      - internal
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8000/api/v2/heartbeat']
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   backend:
     build:
       context: ..
-      dockerfile: apps/backend/Dockerfile
+      dockerfile: apps/backend/Dockerfile.prod
     restart: always
     env_file:
-      - ../.env
+      - ../.env.production
+    environment:
+      # Override hostnames so backend speaks to internal services.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: '9000'
+      MINIO_USE_SSL: 'false'
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: '8000'
+      APP_VERSION: ${APP_VERSION:-1.0.0}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
-    ports:
-      - '4000:4000'
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    networks:
+      - internal
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O- http://localhost:4000/api/v1/health | grep -q "\"status\""']
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   frontend:
     build:
       context: ..
-      dockerfile: apps/frontend/Dockerfile
+      dockerfile: apps/frontend/Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://gvdsoft.com.vn/api/v1}
     restart: always
     env_file:
-      - ../.env
+      - ../.env.production
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://gvdsoft.com.vn/api/v1}
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    networks:
+      - internal
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O- http://localhost:3000 >/dev/null || exit 1']
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: always
     ports:
-      - '3000:3000'
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - nginx_certs:/etc/letsencrypt
+      - nginx_www:/var/www/certbot
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    networks:
+      - internal
+      - public
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://localhost/healthz']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  internal:
+    driver: bridge
+    internal: false
+  public:
+    driver: bridge
 
 volumes:
   postgres_data:
   redis_data:
   minio_data:
+  chroma_data:
+  nginx_certs:
+  nginx_www:
