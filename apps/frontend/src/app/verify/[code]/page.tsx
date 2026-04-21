@@ -57,7 +57,7 @@ export default async function VerifyPage({ params }: Props) {
               />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-foreground">GVD Learning</h1>
+          <h1 className="text-2xl font-bold text-foreground">GVD simvana</h1>
           <p className="mt-1 text-sm text-muted">Hệ thống xác minh chứng chỉ</p>
         </header>
 

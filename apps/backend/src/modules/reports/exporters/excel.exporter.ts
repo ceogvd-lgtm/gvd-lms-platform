@@ -35,7 +35,7 @@ export async function buildProgressReportXlsx(
   subtitle: string,
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'GVD next-gen LMS';
+  workbook.creator = 'GVD simvana';
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet('Progress');
@@ -90,7 +90,7 @@ export interface UserExportRow {
 
 export async function buildUserListXlsx(rows: UserExportRow[], title: string): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'GVD next-gen LMS';
+  workbook.creator = 'GVD simvana';
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet('Users');
@@ -154,7 +154,7 @@ export async function buildCertificateListXlsx(
   title: string,
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'GVD next-gen LMS';
+  workbook.creator = 'GVD simvana';
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet('Certificates');

@@ -9,7 +9,7 @@ export interface ResetPasswordProps {
 
 export function ResetPassword({ name, link }: ResetPasswordProps) {
   return (
-    <EmailLayout preview="Đặt lại mật khẩu GVD next-gen">
+    <EmailLayout preview="Đặt lại mật khẩu GVD simvana">
       <Heading as="h1" style={{ fontSize: '24px', color: '#2563EB', marginTop: 0 }}>
         Đặt lại mật khẩu
       </Heading>

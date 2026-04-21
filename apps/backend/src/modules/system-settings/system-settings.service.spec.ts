@@ -152,7 +152,7 @@ describe('SystemSettingsService', () => {
         SUPER,
         {
           updates: [
-            { key: 'org.name', value: 'GVD next-gen' },
+            { key: 'org.name', value: 'GVD simvana' },
             { key: 'security.passwordMinLength', value: 10 },
           ],
         },
