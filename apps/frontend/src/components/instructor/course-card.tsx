@@ -83,8 +83,13 @@ export function CourseCard({
           <span>{course._count?.enrollments ?? 0} học viên</span>
         </div>
         <div className="mt-auto flex items-center gap-2 pt-2">
+          {/* Phase 18 bugfix — nút "Xem" trước đây trỏ /courses/:id → 404
+              (route không tồn tại). Đổi về /instructor/courses/:id/edit:
+              instructor thấy toàn bộ cấu trúc chương + bài ở bước 2 của
+              wizard, tương đương "xem chi tiết". Nút "Sửa" phía sau vẫn
+              giữ vai trò chính cho edit intent rõ ràng hơn. */}
           <Link
-            href={`/courses/${course.id}`}
+            href={editHref}
             className="inline-flex h-8 items-center gap-1 rounded-button border border-border px-3 text-xs font-semibold text-muted hover:border-primary hover:text-primary transition-colors"
           >
             <Eye className="h-3.5 w-3.5" />

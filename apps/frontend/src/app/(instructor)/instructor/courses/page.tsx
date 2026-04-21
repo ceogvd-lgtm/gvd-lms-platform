@@ -269,8 +269,11 @@ export default function InstructorCoursesPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
+                      {/* Phase 18 bugfix — nút "Xem" trước đây trỏ
+                          /courses/:id → 404. Đổi về /instructor/courses/:id/edit
+                          (cùng URL đích với CourseCard grid view). */}
                       <Link
-                        href={`/courses/${c.id}`}
+                        href={`/instructor/courses/${c.id}/edit`}
                         className="inline-flex h-8 items-center gap-1 rounded-button border border-border px-2.5 text-xs font-semibold text-muted hover:border-primary hover:text-primary transition-colors"
                       >
                         <Eye className="h-3.5 w-3.5" />
