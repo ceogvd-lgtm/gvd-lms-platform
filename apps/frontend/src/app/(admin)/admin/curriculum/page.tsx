@@ -136,6 +136,46 @@ export default function CurriculumPage() {
     }
   };
 
+  const deleteCourse = async (c: Course) => {
+    if (
+      !confirm(
+        `Xoá khoá học "${c.title}"?\n\nKhoá học + tất cả chương/bài giảng bên trong sẽ bị soft-delete. Hành động ghi audit log.`,
+      )
+    )
+      return;
+    try {
+      await coursesApi.remove(c.id, token!);
+      toast.success('Đã xoá khoá học');
+      invalidateAll();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : (err as Error).message);
+    }
+  };
+
+  const deleteChapter = async (ch: Chapter) => {
+    if (!confirm(`Xoá chương "${ch.title}"?\n\nTất cả bài giảng trong chương cũng bị xoá theo.`))
+      return;
+    try {
+      await chaptersApi.remove(ch.id, token!);
+      toast.success('Đã xoá chương');
+      invalidateAll();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : (err as Error).message);
+    }
+  };
+
+  const deleteLesson = async (l: Lesson) => {
+    if (!confirm(`Xoá bài giảng "${l.title}"?\n\nHành động này soft-delete + ghi audit log.`))
+      return;
+    try {
+      await lessonsApi.remove(l.id, token!);
+      toast.success('Đã xoá bài giảng');
+      invalidateAll();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : (err as Error).message);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Breadcrumb items={[{ label: 'Admin', href: '/admin/users' }, { label: 'Curriculum' }]} />
@@ -177,6 +217,9 @@ export default function CurriculumPage() {
               setPanel={setPanel}
               onDelete={deleteDept}
               onDeleteSubject={deleteSubject}
+              onDeleteCourse={deleteCourse}
+              onDeleteChapter={deleteChapter}
+              onDeleteLesson={deleteLesson}
             />
           ))}
         </ul>
@@ -357,6 +400,9 @@ function DepartmentNode({
   setPanel,
   onDelete,
   onDeleteSubject,
+  onDeleteCourse,
+  onDeleteChapter,
+  onDeleteLesson,
 }: {
   dept: Department;
   expanded: Set<string>;
@@ -364,6 +410,9 @@ function DepartmentNode({
   setPanel: (p: PanelState) => void;
   onDelete: (d: Department) => void;
   onDeleteSubject: (s: Subject) => void;
+  onDeleteCourse: (c: Course) => void;
+  onDeleteChapter: (ch: Chapter) => void;
+  onDeleteLesson: (l: Lesson) => void;
 }) {
   const key = `dept:${dept.id}`;
   const open = expanded.has(key);
@@ -438,6 +487,9 @@ function DepartmentNode({
                 toggle={toggle}
                 setPanel={setPanel}
                 onDelete={onDeleteSubject}
+                onDeleteCourse={onDeleteCourse}
+                onDeleteChapter={onDeleteChapter}
+                onDeleteLesson={onDeleteLesson}
               />
             ))}
           </ul>
@@ -456,12 +508,18 @@ function SubjectNode({
   toggle,
   setPanel,
   onDelete,
+  onDeleteCourse,
+  onDeleteChapter,
+  onDeleteLesson,
 }: {
   subject: Subject;
   expanded: Set<string>;
   toggle: (key: string) => void;
   setPanel: (p: PanelState) => void;
   onDelete: (s: Subject) => void;
+  onDeleteCourse: (c: Course) => void;
+  onDeleteChapter: (ch: Chapter) => void;
+  onDeleteLesson: (l: Lesson) => void;
 }) {
   const token = useAuthStore((s) => s.accessToken);
   const key = `subj:${subject.id}`;
@@ -532,6 +590,9 @@ function SubjectNode({
                 expanded={expanded}
                 toggle={toggle}
                 setPanel={setPanel}
+                onDelete={onDeleteCourse}
+                onDeleteChapter={onDeleteChapter}
+                onDeleteLesson={onDeleteLesson}
               />
             ))}
           </ul>
@@ -549,11 +610,17 @@ function CourseNode({
   expanded,
   toggle,
   setPanel,
+  onDelete,
+  onDeleteChapter,
+  onDeleteLesson,
 }: {
   course: Course;
   expanded: Set<string>;
   toggle: (key: string) => void;
   setPanel: (p: PanelState) => void;
+  onDelete: (c: Course) => void;
+  onDeleteChapter: (ch: Chapter) => void;
+  onDeleteLesson: (l: Lesson) => void;
 }) {
   const token = useAuthStore((s) => s.accessToken);
   const key = `course:${course.id}`;
@@ -589,6 +656,12 @@ function CourseNode({
             label: 'Sửa',
             onClick: () => setPanel({ kind: 'course-edit', item: course }),
           },
+          {
+            icon: Trash2,
+            label: 'Xoá',
+            destructive: true,
+            onClick: () => onDelete(course),
+          },
         ]}
       />
       {open && (
@@ -605,6 +678,8 @@ function CourseNode({
                 expanded={expanded}
                 toggle={toggle}
                 setPanel={setPanel}
+                onDelete={onDeleteChapter}
+                onDeleteLesson={onDeleteLesson}
               />
             ))}
           </ul>
@@ -622,11 +697,15 @@ function ChapterNode({
   expanded,
   toggle,
   setPanel,
+  onDelete,
+  onDeleteLesson,
 }: {
   chapter: Chapter;
   expanded: Set<string>;
   toggle: (key: string) => void;
   setPanel: (p: PanelState) => void;
+  onDelete: (ch: Chapter) => void;
+  onDeleteLesson: (l: Lesson) => void;
 }) {
   const key = `chap:${chapter.id}`;
   const open = expanded.has(key);
@@ -650,6 +729,12 @@ function ChapterNode({
             label: 'Sửa',
             onClick: () => setPanel({ kind: 'chapter-edit', item: chapter }),
           },
+          {
+            icon: Trash2,
+            label: 'Xoá',
+            destructive: true,
+            onClick: () => onDelete(chapter),
+          },
         ]}
       />
       {open && (
@@ -658,7 +743,7 @@ function ChapterNode({
             <li className="py-2 text-xs italic text-muted">Chưa có bài giảng</li>
           )}
           {chapter.lessons?.map((l) => (
-            <LessonNode key={l.id} lesson={l} setPanel={setPanel} />
+            <LessonNode key={l.id} lesson={l} setPanel={setPanel} onDelete={onDeleteLesson} />
           ))}
         </ul>
       )}
@@ -669,22 +754,42 @@ function ChapterNode({
 /* ============================================================
  * Lesson leaf
  * ============================================================ */
-function LessonNode({ lesson, setPanel }: { lesson: Lesson; setPanel: (p: PanelState) => void }) {
+function LessonNode({
+  lesson,
+  setPanel,
+  onDelete,
+}: {
+  lesson: Lesson;
+  setPanel: (p: PanelState) => void;
+  onDelete: (l: Lesson) => void;
+}) {
   return (
-    <li className="flex items-center gap-2 rounded-button px-3 py-2 hover:bg-surface-2">
+    <li className="group flex items-center gap-2 rounded-button px-3 py-2 hover:bg-surface-2">
       <FileText className="h-4 w-4 shrink-0 text-muted" />
       <span className="flex-1 text-sm text-foreground truncate">{lesson.title}</span>
       <span className="text-[10px] uppercase tracking-wider text-muted">
         {lesson.type === 'THEORY' ? 'Lý thuyết' : 'Thực hành'}
       </span>
-      <button
-        type="button"
-        onClick={() => setPanel({ kind: 'lesson-edit', item: lesson })}
-        className="rounded-md p-1 text-muted hover:bg-surface hover:text-primary"
-        aria-label="Sửa"
-      >
-        <Pencil className="h-3.5 w-3.5" />
-      </button>
+      <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={() => setPanel({ kind: 'lesson-edit', item: lesson })}
+          className="rounded-md p-1 text-muted hover:bg-surface hover:text-primary"
+          aria-label="Sửa"
+          title="Sửa"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => onDelete(lesson)}
+          className="rounded-md p-1 text-muted hover:bg-error/10 hover:text-error"
+          aria-label="Xoá"
+          title="Xoá"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
     </li>
   );
 }
