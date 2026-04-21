@@ -751,24 +751,65 @@ export const adminSettingsApi = {
       token,
     }),
 
-  triggerBackup: (token: string) =>
-    api<{ ok: boolean; id: string; message: string; stub: boolean }>(
-      '/admin/settings/backup/trigger',
+  // Backup endpoints migrated to /admin/backups/* (Phase 18B).
+  // Use `backupsApi` below instead.
+};
+
+// =====================================================
+// Phase 18B — Real pg_dump database backup API.
+// =====================================================
+
+export type BackupStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
+export type BackupTriggerType = 'MANUAL' | 'SCHEDULED';
+
+export interface BackupHistoryItem {
+  id: string;
+  filename: string;
+  sizeBytes: number;
+  status: BackupStatus;
+  triggerType: BackupTriggerType;
+  triggeredBy: string;
+  error: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  /** Presigned URL (1 h TTL). Null unless status=SUCCESS. */
+  downloadUrl: string | null;
+}
+
+export interface BackupHistoryPage {
+  items: BackupHistoryItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export const backupsApi = {
+  /** Enqueue a new manual backup — returns PENDING row immediately. */
+  trigger: (token: string) =>
+    api<{ id: string; filename: string; status: BackupStatus; createdAt: string; message: string }>(
+      '/admin/backups/trigger',
       { method: 'POST', token },
     ),
 
-  getBackupHistory: (token: string) =>
-    api<{
-      items: Array<{
-        id: string;
-        filename: string;
-        size: number;
-        createdAt: string;
-        status: string;
-      }>;
-      stub: boolean;
-      message: string;
-    }>('/admin/settings/backup/history', { token }),
+  /** Paginated history with presigned download URLs. */
+  list: (page: number, limit: number, token: string) =>
+    api<BackupHistoryPage>(`/admin/backups?page=${page}&limit=${limit}`, { token }),
+
+  /** SUPER_ADMIN — force retention sweep (also runs automatically at 02:00). */
+  cleanup: (token: string) =>
+    api<{ deleted: number; errors: number }>('/admin/backups/cleanup', {
+      method: 'POST',
+      token,
+    }),
+
+  /** SUPER_ADMIN — DANGEROUS. Overwrites DB with backup contents. */
+  restore: (id: string, confirm: string, token: string) =>
+    api<{ ok: true }>(`/admin/backups/restore/${id}`, {
+      method: 'POST',
+      body: { confirm },
+      token,
+    }),
 };
 
 // =====================================================

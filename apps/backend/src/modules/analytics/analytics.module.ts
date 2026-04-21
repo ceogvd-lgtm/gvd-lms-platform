@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 
 import { PrismaModule } from '../../common/prisma/prisma.module';
 import { CRON_QUEUE } from '../../common/queue/queue.module';
+import { BackupModule } from '../backup/backup.module';
 import { EnrollmentsModule } from '../enrollments/enrollments.module';
 import { ProgressModule } from '../progress/progress.module';
 import { ReportsModule } from '../reports/reports.module';
@@ -35,6 +36,9 @@ import { ScheduledReportsService } from './scheduled-reports.service';
     // Phase 18 — CronProcessor dispatches auto-enroll-daily jobs to
     // EnrollmentsService.autoEnrollAllPublished.
     EnrollmentsModule,
+    // Phase 18B — CronProcessor dispatches database-backup-daily jobs to
+    // BackupService (runScheduledBackup + runBackupJob).
+    BackupModule,
     BullModule.registerQueue({ name: CRON_QUEUE }),
   ],
   controllers: [AnalyticsController],

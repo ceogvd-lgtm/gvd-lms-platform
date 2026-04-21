@@ -49,7 +49,11 @@ ENV PORT=4000
 # its allowed prefix.
 RUN addgroup -S nestjs && adduser -S nestjs -G nestjs
 
-RUN apk add --no-cache libc6-compat openssl wget
+# postgresql-client gives us `pg_dump` + `psql` for the Phase-18B backup
+# feature. The backend service shells out to pg_dump inside this container,
+# uploads the dump to MinIO under `backups/`, then triggers restore via
+# `psql` when SUPER_ADMIN requests a rollback.
+RUN apk add --no-cache libc6-compat openssl wget postgresql-client
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 COPY --from=builder /app/pnpm-workspace.yaml /app/pnpm-lock.yaml /app/package.json ./

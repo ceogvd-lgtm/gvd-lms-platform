@@ -222,26 +222,5 @@ describe('SystemSettingsService', () => {
     });
   });
 
-  // =====================================================
-  // triggerBackup — stub
-  // =====================================================
-  describe('triggerBackup', () => {
-    it('writes SYSTEM_BACKUP_TRIGGER audit and returns stub flag', async () => {
-      const result = await service.triggerBackup(SUPER, META);
-      expect(result.ok).toBe(true);
-      expect(result.stub).toBe(true);
-      expect(result.id).toBeDefined();
-      expect(auditMock.log).toHaveBeenCalledWith(
-        expect.objectContaining({ action: 'SYSTEM_BACKUP_TRIGGER' }),
-      );
-    });
-  });
-
-  describe('getBackupHistory', () => {
-    it('returns empty array with stub flag (Phase 18 will populate)', async () => {
-      const result = await service.getBackupHistory();
-      expect(result.items).toEqual([]);
-      expect(result.stub).toBe(true);
-    });
-  });
+  // Backup tests moved to backup.service.spec.ts (Phase 18B real pg_dump).
 });

@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 
 import { CRON_QUEUE } from '../../common/queue/queue.module';
+import { BackupService, DATABASE_BACKUP_JOB } from '../backup/backup.service';
 import { AUTO_ENROLL_JOB } from '../enrollments/enrollment-scheduler.service';
 import { EnrollmentsService } from '../enrollments/enrollments.service';
 import { AtRiskService } from '../progress/at-risk.service';
@@ -32,6 +33,8 @@ export class CronProcessor extends WorkerHost {
     private readonly storageCleanup: StorageCleanupService,
     // Phase 18 — auto-enroll-daily cron dispatch
     private readonly enrollments: EnrollmentsService,
+    // Phase 18B — database-backup-daily cron dispatch
+    private readonly backup: BackupService,
   ) {
     super();
   }
@@ -61,6 +64,32 @@ export class CronProcessor extends WorkerHost {
           `${AUTO_ENROLL_JOB} done — courses=${res.courses} enrolled=${res.totalEnrolled} skipped=${res.totalSkipped}`,
         );
         return { ok: true, result: res };
+      }
+      case DATABASE_BACKUP_JOB: {
+        // Phase 18B — 02:00 daily. 2 dạng job:
+        //   (a) Cron tick (data.backupId undefined)
+        //       → runScheduledBackup() tạo row SCHEDULED + run sync + cleanup
+        //   (b) Manual trigger (data.backupId present)
+        //       → runBackupJob(id) — row đã tồn tại do triggerBackup tạo
+        const backupId = (job.data as { backupId?: string }).backupId;
+        if (backupId) {
+          const res = await this.backup.runBackupJob(backupId);
+          this.logger.log(
+            `${DATABASE_BACKUP_JOB} (manual) done — id=${res.id} status=${res.status}`,
+          );
+          return { ok: true, result: { id: res.id, status: res.status } };
+        }
+        // Cron tick
+        const completed = await this.backup.runScheduledBackup();
+        const retention = await this.backup.cleanupOldBackups('SYSTEM');
+        this.logger.log(
+          `${DATABASE_BACKUP_JOB} (cron) done — id=${completed.id} status=${completed.status} ` +
+            `retention deleted=${retention.deleted} errors=${retention.errors}`,
+        );
+        return {
+          ok: true,
+          result: { id: completed.id, status: completed.status, retention },
+        };
       }
       default:
         this.logger.warn(`Unknown cron job name: ${job.name}`);
