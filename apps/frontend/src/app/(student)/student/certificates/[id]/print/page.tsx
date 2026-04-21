@@ -80,7 +80,7 @@ export default function CertificatePrintPage({ params }: { params: Promise<{ id:
             <div className="relative space-y-6 text-center">
               <div className="flex items-center justify-center gap-3 text-primary">
                 <GvdLogo className="h-12 w-12" />
-                <span className="text-2xl font-bold">GVD Learning</span>
+                <span className="text-2xl font-bold">GVD simvana</span>
               </div>
 
               <div className="flex items-center justify-center gap-2 text-sm uppercase tracking-[0.2em] text-muted-foreground">
@@ -101,7 +101,7 @@ export default function CertificatePrintPage({ params }: { params: Promise<{ id:
 
               <div className="mx-auto grid max-w-xl grid-cols-2 gap-8 pt-8 text-sm">
                 <div className="border-t-2 border-slate-400 pt-2">
-                  <p className="font-semibold">{query.data.instructor?.name ?? 'GVD Learning'}</p>
+                  <p className="font-semibold">{query.data.instructor?.name ?? 'GVD simvana'}</p>
                   <p className="text-xs text-slate-500">Giảng viên</p>
                 </div>
                 <div className="border-t-2 border-slate-400 pt-2">

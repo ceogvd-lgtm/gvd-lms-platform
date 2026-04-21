@@ -102,7 +102,7 @@ export function InstructorSidebar({ collapsed = false }: InstructorSidebarProps)
           </span>
           {!collapsed && (
             <span className="text-base">
-              GVD <span className="text-amber-300">Instructor</span>
+              GVD simvana <span className="text-amber-300">· Giảng viên</span>
             </span>
           )}
         </Link>

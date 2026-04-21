@@ -9,9 +9,9 @@ export interface WelcomeProps {
 
 export function Welcome({ name, dashboardUrl }: WelcomeProps) {
   return (
-    <EmailLayout preview={`Chào mừng ${name} đến với GVD next-gen`}>
+    <EmailLayout preview={`Chào mừng ${name} đến với GVD simvana`}>
       <Heading as="h1" style={{ fontSize: '26px', color: '#2563EB', marginTop: 0 }}>
-        Chào mừng đến với GVD next-gen! 🎉
+        Chào mừng đến với GVD simvana! 🎉
       </Heading>
       <Text style={{ color: '#475569', fontSize: '15px' }}>Chào {name},</Text>
       <Text style={{ color: '#475569', fontSize: '15px', lineHeight: '1.6' }}>

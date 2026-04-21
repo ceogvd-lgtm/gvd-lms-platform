@@ -12,7 +12,9 @@ import { SystemSettingsService } from './system-settings.service';
 
 /**
  * /admin/settings — ADMIN+ can READ (smtp.pass masked),
- * SUPER_ADMIN only can WRITE / test SMTP / trigger backup.
+ * SUPER_ADMIN only can WRITE / test SMTP.
+ *
+ * Backup endpoints moved to /admin/backups/* — see BackupController.
  *
  * Settings page in the UI renders a read-only form for ADMIN and
  * disables all inputs with a tooltip.
@@ -42,18 +44,9 @@ export class SystemSettingsController {
     return this.settings.testSmtp(dto);
   }
 
-  @Post('backup/trigger')
-  @Roles(Role.SUPER_ADMIN)
-  @HttpCode(HttpStatus.OK)
-  triggerBackup(@CurrentUser() user: JwtPayload, @Req() req: Request) {
-    return this.settings.triggerBackup({ id: user.sub, role: user.role }, { ip: getClientIp(req) });
-  }
-
-  @Get('backup/history')
-  @Roles(Role.SUPER_ADMIN)
-  getBackupHistory() {
-    return this.settings.getBackupHistory();
-  }
+  // NOTE: Backup endpoints moved to /admin/backups/* in Phase 18B
+  // (BackupController). These routes were stubs that only wrote AuditLog.
+  // Keep the settings controller focused on org/SMTP/security/quota.
 }
 
 function getClientIp(req: Request): string {

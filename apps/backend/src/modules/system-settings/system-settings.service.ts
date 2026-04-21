@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto';
-
 import { Role } from '@lms/database';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import nodemailer from 'nodemailer';
@@ -251,44 +249,10 @@ export class SystemSettingsService {
     }
   }
 
-  // =====================================================
-  // BACKUP TRIGGER — STUB (Phase 18 will implement real pg_dump + S3)
-  // =====================================================
-  async triggerBackup(actor: Actor, meta: Meta) {
-    const id = randomUUID();
-    await this.audit.log({
-      userId: actor.id,
-      action: 'SYSTEM_BACKUP_TRIGGER',
-      targetType: 'System',
-      targetId: id,
-      ipAddress: meta.ip,
-      newValue: { stub: true, message: 'Backup queued (stub — Phase 18)' },
-    });
-    return {
-      ok: true,
-      id,
-      message: 'Backup đã được xếp hàng (stub — Phase 18 sẽ implement)',
-      stub: true,
-    };
-  }
-
-  // =====================================================
-  // BACKUP HISTORY — STUB
-  // =====================================================
-  async getBackupHistory() {
-    // Phase 18 will populate this from a Backup model / S3 listing.
-    return {
-      items: [] as Array<{
-        id: string;
-        filename: string;
-        size: number;
-        createdAt: Date;
-        status: string;
-      }>,
-      stub: true,
-      message: 'Backup history will be populated in Phase 18',
-    };
-  }
+  // NOTE: Backup methods moved to BackupService (Phase 18B).
+  //   /admin/settings/backup/trigger → /admin/backups/trigger
+  //   /admin/settings/backup/history → /admin/backups
+  // Real implementation uses pg_dump + MinIO + retention + cron.
 }
 
 export const SYSTEM_SETTINGS_ALLOWED_KEYS = ALLOWED_KEYS;

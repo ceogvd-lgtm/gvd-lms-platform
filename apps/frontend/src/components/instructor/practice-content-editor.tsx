@@ -539,10 +539,26 @@ function WebGLUploadPanel({
     }
   }, [webglUrl, status]);
 
+  // Reset mọi state về idle — user có thể thử lại sau khi lỗi mà không cần refresh trang.
+  const resetForRetry = () => {
+    setStatus('idle');
+    setJobId(null);
+    setFailReason(null);
+    setProgress(0);
+    setProjectName(null);
+    if (pollRef.current) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
   const upload = useMutation({
     mutationFn: (file: File) => practiceContentsApi.uploadWebGL(lessonId, file, accessToken!),
     onMutate: () => {
+      // Reset TẤT CẢ state liên quan upload cũ — tránh stale jobId gây polling zombie
+      // khi user upload lại sau lần fail trước.
       setStatus('uploading');
+      setJobId(null);
       setFailReason(null);
       setProgress(0);
     },
@@ -558,7 +574,9 @@ function WebGLUploadPanel({
       );
     },
     onError: (err) => {
+      // Upload thất bại — không có job nào được tạo, clear jobId để tránh polling stale.
       setStatus('failed');
+      setJobId(null);
       const msg = err instanceof ApiError ? err.message : 'Upload thất bại';
       setFailReason(msg);
       toast.error(msg);
@@ -576,21 +594,30 @@ function WebGLUploadPanel({
         setProgress(s.progress);
         if (s.state === 'completed') {
           setStatus('ready');
+          setJobId(null); // clear — job đã xong, không cần poll nữa
           toast.success('Giải nén thành công — WebGL sẵn sàng');
         } else if (s.state === 'failed') {
+          // CRITICAL: clear jobId để useEffect cleanup chạy và interval dừng
+          // ngay lập tức. Nếu không clear, interval vẫn chạy 2s/lần dù status='failed'.
           setStatus('failed');
+          setJobId(null);
           setFailReason(s.failReason ?? 'Giải nén thất bại');
           toast.error(s.failReason ?? 'Giải nén thất bại');
         }
-      } catch {
-        // non-fatal; try again on next tick
+      } catch (err) {
+        // Network error khi poll — không fatal, thử lại tick sau. Log để debug.
+        // eslint-disable-next-line no-console
+        console.warn('[extractStatus poll]', err);
       }
     };
     tick();
     pollRef.current = window.setInterval(tick, 2_000);
     return () => {
       cancelled = true;
-      if (pollRef.current) window.clearInterval(pollRef.current);
+      if (pollRef.current) {
+        window.clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
     };
   }, [jobId, status, lessonId, accessToken]);
 
@@ -631,6 +658,32 @@ function WebGLUploadPanel({
               <AlertTriangle className="mb-3 h-8 w-8 text-rose-500" />
               <p className="text-sm font-semibold text-rose-600">Upload thất bại</p>
               {failReason && <p className="mt-1 max-w-md text-xs text-muted">{failReason}</p>}
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={resetForRetry}
+                  className="inline-flex items-center gap-1.5 rounded-button bg-primary px-4 py-2 text-xs font-semibold text-white hover:bg-primary/90 transition-colors"
+                >
+                  <CloudUpload className="h-3.5 w-3.5" />
+                  Thử lại
+                </button>
+                {/* key trick: force re-mount input để browser reset value, cho phép chọn lại CÙNG file */}
+                <label className="cursor-pointer rounded-button border border-border px-4 py-2 text-xs font-semibold text-foreground hover:bg-surface-2 transition-colors">
+                  Chọn file khác
+                  <input
+                    key={`retry-${jobId ?? 'empty'}`}
+                    type="file"
+                    accept=".zip"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) upload.mutate(f);
+                      // clear input value để lần sau chọn lại cùng file vẫn trigger onChange
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              </div>
             </>
           ) : (
             <>
@@ -647,6 +700,8 @@ function WebGLUploadPanel({
                     onChange={(e) => {
                       const f = e.target.files?.[0];
                       if (f) upload.mutate(f);
+                      // clear value → cho phép upload lại cùng file sau khi fail
+                      e.target.value = '';
                     }}
                   />
                 </label>

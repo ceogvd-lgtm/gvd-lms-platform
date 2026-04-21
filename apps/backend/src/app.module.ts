@@ -21,6 +21,7 @@ import { AiModule } from './modules/ai/ai.module';
 import { AnalyticsAdminModule } from './modules/analytics/analytics.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
+import { BackupModule } from './modules/backup/backup.module';
 import { CertificatesModule } from './modules/certificates/certificates.module';
 import { ChaptersModule } from './modules/chapters/chapters.module';
 import { CoursesModule } from './modules/courses/courses.module';
@@ -124,6 +125,8 @@ const monorepoRoot = join(__dirname, '..', '..', '..');
     AiModule,
     // Phase 18 — MinIO orphan file cleanup (weekly cron + manual trigger)
     StorageCleanupModule,
+    // Phase 18B — Real pg_dump database backup (daily cron + manual + restore)
+    BackupModule,
   ],
   controllers: [AppController],
   providers: [

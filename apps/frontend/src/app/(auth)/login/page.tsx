@@ -65,7 +65,7 @@ export default function LoginPage() {
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Đăng nhập</h2>
         <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-          Chào mừng bạn trở lại với GVD next-gen
+          Chào mừng bạn trở lại với GVD simvana
         </p>
       </div>
 

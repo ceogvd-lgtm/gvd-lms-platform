@@ -39,7 +39,7 @@ export function EmailLayout({ preview, children }: EmailLayoutProps) {
           <Section style={styles.footer}>
             <Hr style={styles.hr} />
             <Text style={styles.footerText}>
-              GVD next-gen — Hệ thống đào tạo thực hành kỹ thuật công nghiệp
+              GVD simvana — Hệ thống đào tạo thực hành kỹ thuật công nghiệp
             </Text>
             <Text style={styles.footerTextMuted}>
               Bạn nhận được email này vì đã đăng ký tài khoản GVD. Nếu bạn không thực hiện hành động

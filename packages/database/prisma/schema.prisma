@@ -76,6 +76,18 @@ enum CertificateStatus {
   EXPIRED
 }
 
+enum BackupStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum BackupTriggerType {
+  MANUAL
+  SCHEDULED
+}
+
 // =========================================================
 // CORE — USER & CATALOG
 // =========================================================
@@ -610,6 +622,26 @@ model Notification {
   @@index([userId, isRead])
   @@index([createdAt])
   @@map("notifications")
+}
+
+/// Phase 18B — Real pg_dump backup records.
+/// Lifecycle: PENDING → RUNNING → SUCCESS/FAILED.
+/// File lives under MinIO prefix `backups/{filename}` with retention 30 days.
+model Backup {
+  id          String            @id @default(cuid())
+  filename    String
+  sizeBytes   BigInt            @default(0)
+  minioKey    String
+  status      BackupStatus      @default(PENDING)
+  triggeredBy String // user id or literal 'SYSTEM' for cron
+  triggerType BackupTriggerType @default(MANUAL)
+  error       String?
+  createdAt   DateTime          @default(now())
+  completedAt DateTime?
+
+  @@index([createdAt])
+  @@index([status])
+  @@map("backups")
 }
 
 // =========================================================

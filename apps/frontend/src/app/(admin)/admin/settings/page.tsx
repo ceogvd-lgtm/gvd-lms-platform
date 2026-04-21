@@ -16,6 +16,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   Database,
+  Download,
   HardDrive,
   Mail,
   Save,
@@ -27,7 +28,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { AiHealthPanel } from '@/components/ai/ai-health-panel';
-import { adminSettingsApi, ApiError, type SystemSettingRow } from '@/lib/api';
+import {
+  adminSettingsApi,
+  ApiError,
+  backupsApi,
+  type BackupHistoryItem,
+  type BackupStatus,
+  type SystemSettingRow,
+} from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 
 /**
@@ -68,10 +76,19 @@ export default function AdminSettingsPage() {
     enabled: !!accessToken,
   });
 
+  // Phase 18B — real backup history from /admin/backups with presigned URLs.
+  // Auto-refresh every 5 s while any row is still RUNNING/PENDING so the
+  // badge flips to SUCCESS/FAILED without user pressing F5.
+  const [backupPage, setBackupPage] = useState(1);
   const backupHistoryQuery = useQuery({
-    queryKey: ['admin-backup-history'],
-    queryFn: () => adminSettingsApi.getBackupHistory(accessToken!),
-    enabled: !!accessToken && isSuperAdmin,
+    queryKey: ['admin-backup-history', backupPage],
+    queryFn: () => backupsApi.list(backupPage, 10, accessToken!),
+    enabled: !!accessToken && (user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN'),
+    refetchInterval: (q) => {
+      const items = q.state.data?.items ?? [];
+      const anyRunning = items.some((i) => i.status === 'PENDING' || i.status === 'RUNNING');
+      return anyRunning ? 5000 : false;
+    },
   });
 
   const [draft, setDraft] = useState<DraftMap>({});
@@ -143,17 +160,41 @@ export default function AdminSettingsPage() {
   };
 
   const handleTriggerBackup = async () => {
-    if (!confirm('Trigger backup cơ sở dữ liệu ngay bây giờ?')) return;
+    if (
+      !confirm(
+        'Tạo bản backup cơ sở dữ liệu ngay?\n\nQuá trình pg_dump có thể mất vài phút tuỳ kích thước DB. Bạn có thể đóng trang — job chạy nền.',
+      )
+    )
+      return;
     setTriggeringBackup(true);
     try {
-      const result = await adminSettingsApi.triggerBackup(accessToken!);
-      toast.success(result.message);
+      const result = await backupsApi.trigger(accessToken!);
+      toast.success(`Đã tạo job backup "${result.filename}" — đang chạy nền.`);
+      // Refetch ngay để show row PENDING → auto-refresh poll sẽ lo phần còn lại.
+      qc.invalidateQueries({ queryKey: ['admin-backup-history'] });
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Backup thất bại';
       toast.error(msg);
     } finally {
       setTriggeringBackup(false);
     }
+  };
+
+  const handleDownload = (item: BackupHistoryItem) => {
+    if (!item.downloadUrl) {
+      toast.error('File chưa sẵn sàng hoặc đã hết hạn — refresh trang để lấy URL mới.');
+      return;
+    }
+    // Force download bằng synthetic anchor. Presigned URL tự set Content-Disposition
+    // nếu MinIO bucket config đúng; fallback: browser sẽ mở inline nếu không có header.
+    const a = document.createElement('a');
+    a.href = item.downloadUrl;
+    a.download = item.filename;
+    a.rel = 'noopener';
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   return (
@@ -383,39 +424,135 @@ export default function AdminSettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* BACKUP */}
+        {/* BACKUP — Phase 18B real pg_dump */}
         <TabsContent value="backup">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Database className="h-5 w-5 text-primary" />
-                Sao lưu cơ sở dữ liệu
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Database className="h-5 w-5 text-primary" />
+                  Sao lưu cơ sở dữ liệu
+                </span>
+                {isSuperAdmin && (
+                  <Button onClick={handleTriggerBackup} disabled={triggeringBackup}>
+                    <Database className="h-4 w-4" />
+                    {triggeringBackup ? 'Đang xếp hàng…' : 'Backup ngay'}
+                  </Button>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="rounded-card bg-warning/10 px-4 py-3 text-sm text-warning">
-                <strong>Phase 09:</strong> Endpoint backup đang ở chế độ stub. Logic thật (pg_dump +
-                upload MinIO + retention) sẽ được triển khai trong Phase 18 (Deploy). Nút
-                &ldquo;Trigger&rdquo; bên dưới chỉ ghi vào Audit Log.
+              <div className="rounded-card bg-surface-2 px-4 py-3 text-xs text-muted">
+                <strong className="text-foreground">Phase 18B:</strong> pg_dump + MinIO + retention
+                30 ngày. Cron tự động 02:00 mỗi ngày (SCHEDULED). Nút <em>Backup ngay</em> ở trên
+                tạo 1 bản MANUAL ngoài kế hoạch — job chạy nền, bảng dưới tự refresh khi có row
+                PENDING/RUNNING.
               </div>
 
-              {isSuperAdmin && (
-                <Button onClick={handleTriggerBackup} disabled={triggeringBackup}>
-                  <Database className="h-4 w-4" />
-                  {triggeringBackup ? 'Đang xử lý…' : 'Trigger backup ngay'}
-                </Button>
+              {/* Table */}
+              <div className="overflow-hidden rounded-card border border-border">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-surface-2">
+                    <tr className="text-left">
+                      <th className="px-4 py-2 font-semibold text-foreground">Tên file</th>
+                      <th className="px-4 py-2 font-semibold text-foreground">Kích thước</th>
+                      <th className="px-4 py-2 font-semibold text-foreground">Loại</th>
+                      <th className="px-4 py-2 font-semibold text-foreground">Trạng thái</th>
+                      <th className="px-4 py-2 font-semibold text-foreground">Ngày tạo</th>
+                      <th className="px-4 py-2 font-semibold text-foreground">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {backupHistoryQuery.isLoading && (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-6 text-center text-xs italic text-muted">
+                          Đang tải lịch sử backup…
+                        </td>
+                      </tr>
+                    )}
+                    {!backupHistoryQuery.isLoading &&
+                      backupHistoryQuery.data?.items.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={6}
+                            className="px-4 py-6 text-center text-xs italic text-muted"
+                          >
+                            Chưa có backup nào. Bấm &ldquo;Backup ngay&rdquo; hoặc chờ cron 02:00.
+                          </td>
+                        </tr>
+                      )}
+                    {backupHistoryQuery.data?.items.map((item) => (
+                      <tr key={item.id} className="hover:bg-surface-2/50">
+                        <td className="px-4 py-2 font-mono text-xs text-foreground">
+                          {item.filename}
+                        </td>
+                        <td className="px-4 py-2 text-muted">
+                          {item.sizeBytes > 0 ? formatBytes(item.sizeBytes) : '—'}
+                        </td>
+                        <td className="px-4 py-2">
+                          <span className="text-xs text-muted">
+                            {item.triggerType === 'MANUAL' ? 'Thủ công' : 'Tự động'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2">
+                          <BackupStatusBadge status={item.status} error={item.error} />
+                        </td>
+                        <td className="px-4 py-2 text-xs text-muted">
+                          {new Date(item.createdAt).toLocaleString('vi-VN')}
+                        </td>
+                        <td className="px-4 py-2">
+                          {item.status === 'SUCCESS' && item.downloadUrl && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDownload(item)}
+                              title="Download backup (presigned URL 1 giờ)"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              Tải xuống
+                            </Button>
+                          )}
+                          {item.status === 'FAILED' && item.error && (
+                            <span className="text-xs text-error" title={item.error}>
+                              Xem lỗi
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              {backupHistoryQuery.data && backupHistoryQuery.data.totalPages > 1 && (
+                <div className="flex items-center justify-between text-xs text-muted">
+                  <span>
+                    Trang {backupHistoryQuery.data.page} / {backupHistoryQuery.data.totalPages} ·{' '}
+                    {backupHistoryQuery.data.total} bản ghi
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setBackupPage((p) => Math.max(1, p - 1))}
+                      disabled={backupPage <= 1}
+                    >
+                      ← Trước
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setBackupPage((p) => p + 1)}
+                      disabled={
+                        !backupHistoryQuery.data || backupPage >= backupHistoryQuery.data.totalPages
+                      }
+                    >
+                      Sau →
+                    </Button>
+                  </div>
+                </div>
               )}
-
-              <div>
-                <p className="mb-2 text-sm font-semibold text-foreground">Lịch sử backup</p>
-                {backupHistoryQuery.data?.items.length === 0 ? (
-                  <p className="text-xs italic text-muted">
-                    Chưa có backup nào — Phase 18 sẽ điền danh sách.
-                  </p>
-                ) : (
-                  <p className="text-xs italic text-muted">Đang tải…</p>
-                )}
-              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -451,4 +588,42 @@ export default function AdminSettingsPage() {
       )}
     </div>
   );
+}
+
+/**
+ * Colored badge for backup status. Matches the 4 BackupStatus enum values:
+ *   PENDING (grey) — queued, pg_dump not yet running
+ *   RUNNING (amber) — pg_dump in-flight; refresh will flip to success/fail
+ *   SUCCESS (green) — file uploaded to MinIO, download enabled
+ *   FAILED (red) — error saved in row, shown on hover
+ */
+function BackupStatusBadge({ status, error }: { status: BackupStatus; error: string | null }) {
+  const map: Record<BackupStatus, { label: string; cls: string }> = {
+    PENDING: { label: 'Chờ chạy', cls: 'bg-surface-2 text-muted' },
+    RUNNING: { label: 'Đang chạy', cls: 'bg-warning/15 text-warning' },
+    SUCCESS: { label: 'Thành công', cls: 'bg-success/15 text-success' },
+    FAILED: { label: 'Thất bại', cls: 'bg-error/15 text-error' },
+  };
+  const { label, cls } = map[status];
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${cls}`}
+      title={error ?? undefined}
+    >
+      {label}
+    </span>
+  );
+}
+
+/** Human-readable byte size (binary units — 1 KiB = 1024 B). */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let n = bytes / 1024;
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i++;
+  }
+  return `${n.toFixed(n < 10 ? 2 : 1)} ${units[i]}`;
 }

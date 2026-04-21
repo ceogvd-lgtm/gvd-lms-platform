@@ -16,6 +16,9 @@ export const STORAGE_PREFIXES = {
   PPT: 'content/ppt',
   WEBGL: 'content/webgl',
   CERTIFICATES: 'certificates',
+  // Phase 18B — pg_dump archives. DELIBERATELY not in PUBLIC_PREFIXES
+  // (see below) because dumps contain PII + password hashes.
+  BACKUPS: 'backups',
 } as const;
 
 /**

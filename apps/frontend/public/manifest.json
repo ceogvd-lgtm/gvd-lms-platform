@@ -1,7 +1,7 @@
 {
-  "name": "GVD next-gen — LMS",
-  "short_name": "GVD LMS",
-  "description": "Hệ thống đào tạo thực hành kỹ thuật công nghiệp GVD — tích hợp AI và mô phỏng 3D",
+  "name": "GVD simvana",
+  "short_name": "GVD simvana",
+  "description": "GVD simvana — Hệ thống đào tạo thực hành kỹ thuật công nghiệp tích hợp AI và mô phỏng 3D",
   "start_url": "/",
   "display": "standalone",
   "orientation": "any",
