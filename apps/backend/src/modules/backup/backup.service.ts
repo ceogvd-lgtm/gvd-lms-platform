@@ -436,6 +436,35 @@ export class BackupService implements OnModuleInit {
   private requireDatabaseUrl(): string {
     const url = this.config.get<string>('DATABASE_URL');
     if (!url) throw new BadRequestException('DATABASE_URL not configured');
-    return url;
+    return this.stripPrismaParams(url);
+  }
+
+  /**
+   * Prisma chấp nhận các query param như `?schema=public`, `?connection_limit=5`,
+   * `?pgbouncer=true`, `?statement_cache_size=0`... — pg_dump / pg_restore (libpq)
+   * KHÔNG hiểu và báo lỗi `invalid URI query parameter`. Strip những param này
+   * trước khi pass xuống. Giữ lại những libpq-standard params (sslmode, host,
+   * port, user, password... — nhưng nhưng này luôn là query, không bao giờ
+   * multi-value, nên giữ nguyên là an toàn).
+   */
+  private stripPrismaParams(url: string): string {
+    try {
+      const u = new URL(url);
+      const drop = new Set([
+        'schema',
+        'pgbouncer',
+        'connection_limit',
+        'pool_timeout',
+        'statement_cache_size',
+        'socket_timeout',
+        'connect_timeout',
+      ]);
+      for (const key of [...u.searchParams.keys()]) {
+        if (drop.has(key)) u.searchParams.delete(key);
+      }
+      return u.toString();
+    } catch {
+      return url; // fallback — nếu URL malformed thì để pg_dump tự báo lỗi
+    }
   }
 }
