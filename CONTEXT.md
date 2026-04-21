@@ -22,18 +22,21 @@
 
 ## 1. Tình trạng production
 
-**Trạng thái**: ✅ **SẴN SÀNG PRODUCTION** — Phase 01-18 đã merge về `main` + tag `v1.0.0`.
+**Trạng thái**: ✅ **SẴN SÀNG PRODUCTION** — Phase 01-18B đã merge về `main` + tag `v1.0.0`.
 
-| Item                | Value                                                      |
-| ------------------- | ---------------------------------------------------------- |
-| Version             | `v1.0.0`                                                   |
-| Tag hash            | `b5c3593` (merge Phase 18)                                 |
-| Commit Phase 18 gốc | `f8a3ae6`                                                  |
-| Commit fix gần nhất | `f45be97` (Xem button 404)                                 |
-| Tổng tests PASS     | **502** (420 unit + 49 integration + 19 security + 14 E2E) |
-| Frontend routes     | 35 (30 static + 5 dynamic)                                 |
-| Prisma migrations   | 11 files                                                   |
-| Backend modules     | 31                                                         |
+Brand hiện tại: **GVD Simvana** (code dùng "GVD simvana" — chữ "s" thường).
+
+| Item                | Value                                                                  |
+| ------------------- | ---------------------------------------------------------------------- |
+| Version             | `v1.0.0`                                                               |
+| Tag hash            | `b5c3593` (merge Phase 18)                                             |
+| Commit Phase 18 gốc | `f8a3ae6`                                                              |
+| Commit gần nhất     | `366a3fb` (merge Phase 18B — backup + brand + fixes)                   |
+| Tổng tests PASS     | **429 unit** (46 suites) + 49 integration + 19 security + 14 E2E = 511 |
+| Frontend routes     | 36 (Backup tab + các page hiện có)                                     |
+| Prisma migrations   | 12 files (+ `20260421160240_add_backup_model`)                         |
+| Backend modules     | 32 (+ `BackupModule`)                                                  |
+| Brand               | **GVD Simvana**                                                        |
 
 ---
 
@@ -218,6 +221,57 @@
 
 - **Nút "Xem" course 404**: `/courses/:id` không tồn tại → đổi về `/instructor/courses/:id/edit` (2 files: `course-card.tsx` grid view + `courses/page.tsx` table view)
 - Commit worktree `09bdb43` → merge main `f45be97`
+
+### ✅ Phase 18B — Real Backup System + Brand GVD Simvana (21-22/04)
+
+**Brand rename → GVD Simvana** (28 user-visible strings):
+
+- Frontend: page titles · sidebars (`· Admin` / `· Giảng viên`) · auth pages · verify cert · certificate print · AI chat · PWA manifest (name + short_name + description) · `GvdLogo` title prop
+- Backend: SMTP_FROM fallback · `INSTITUTION_NAME` cert · Gemini system prompt · 6 email templates (subjects + bodies + footer) · Excel workbook creator · test fixtures
+- Seed: `org.name` + `smtp.from` defaults (existing DB rows không đổi — update qua `/admin/settings`)
+- Technical identifiers giữ nguyên: `@lms/*` packages · `lms-uploads` bucket · `LMS_*` env vars · docker container names
+
+**Real pg_dump Backup System** (thay stub Phase 09):
+
+- Model Prisma `Backup` (migration `20260421160240_add_backup_model`) + enums `BackupStatus` · `BackupTriggerType`
+- MinIO prefix mới: `backups/` (KHÔNG trong `PUBLIC_PREFIXES` — dump chứa PII + password hashes)
+- Dockerfile.prod: `apk add postgresql-client` (cho pg_dump + psql trên PATH)
+- BullMQ cron `database-backup-daily` pattern `0 2 * * *` (02:00 mỗi ngày) — idempotent jobId `database-backup-daily-repeat`
+- Retention: 30 ngày (`BACKUP_RETENTION_DAYS` env, default 30) — cleanup sweep cùng cron tick
+- **4 endpoints** tại `/api/v1/admin/backups/*`:
+  - `POST /trigger` (ADMIN+) → 202 tạo PENDING row + enqueue dispatch job
+  - `GET /?page&limit` (ADMIN+) → paginated history với presigned URL 1h (chỉ SUCCESS rows)
+  - `POST /cleanup` (SUPER_ADMIN) → force retention sweep
+  - `POST /restore/:id` (SUPER_ADMIN) → DANGEROUS, yêu cầu `confirm: "YES-I-UNDERSTAND-THIS-OVERWRITES-DATABASE"` trong body
+- AuditLog actions mới: `BACKUP_TRIGGERED` · `BACKUP_CREATED` · `BACKUP_FAILED` · `BACKUP_CLEANED` · `BACKUP_RESTORED`
+
+**Hotfix**: `stripPrismaParams()` strip Prisma-only query params (`schema`, `pgbouncer`, `connection_limit`, `pool_timeout`, `statement_cache_size`, `socket_timeout`, `connect_timeout`) khỏi DATABASE_URL trước khi pass vào pg_dump (libpq reject `?schema=public` với `invalid URI query parameter`)
+
+**Frontend Backup tab** (`/admin/settings` → Backup):
+
+- Stub banner Phase 09 ĐÃ XOÁ
+- Bảng 6 cột: Tên file · Kích thước · Loại (Thủ công/Tự động) · Trạng thái (badge màu 4 mức) · Ngày tạo · Tải xuống
+- Nút **Backup ngay** (SUPER_ADMIN) — toast + auto-refetch
+- Auto-refresh 5s CHỈ KHI có row PENDING/RUNNING (tiết kiệm request)
+- Download qua presigned URL 1h (`<a download>` synthetic click)
+- Pagination 10/trang
+
+**Bonus fixes (cùng merge)**:
+
+- **Curriculum delete buttons**: `/admin/curriculum` giờ có nút Trash hover cho Course/Chapter/Lesson (backend endpoints sẵn có, UI thiếu wiring)
+- **WebGL upload stuck-on-fail**: 3 bug — `jobId` zombie polling · `<input type=file>` cached value · thiếu retry CTA. Fix: clear jobId ở success/fail paths · `e.target.value = ''` sau onChange · nút "Thử lại" + "Chọn file khác" với `key` prop force remount
+
+**Tổng kết**:
+
+- **429/429 backend tests PASS** (46 suites) · **36 routes** build OK
+- Tests mới: `backup.service.spec.ts` (11/11) covering trigger + runBackupJob success/fail/notfound + getBackupHistory pagination+presigned + cleanupOldBackups cutoff + cron register+fail-soft
+- Squashed 5 brand commits → 1 · Final history main:
+  - `366a3fb` merge commit
+  - `a21c94e` feat(brand): rename to GVD Simvana (squashed)
+  - `15f1bbd` fix(backup): strip Prisma params
+  - `8fd8d30` feat(backup): pg_dump system
+  - `fde45bc` fix(instructor): curriculum delete + WebGL stuck
+- Push `origin/main` OK (271f7af..366a3fb)
 
 ---
 
