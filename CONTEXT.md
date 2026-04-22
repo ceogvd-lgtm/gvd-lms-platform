@@ -3,7 +3,7 @@
 > File này chứa **trạng thái động** — cập nhật sau mỗi phase.
 > Quy tắc bất biến → xem `CLAUDE.md`.
 
-**Cập nhật lần cuối**: 22/04/2026
+**Cập nhật lần cuối**: 22/04/2026 (v1.0.2)
 
 ---
 
@@ -22,17 +22,18 @@
 
 ## 1. Tình trạng production
 
-**Trạng thái**: ✅ **SẴN SÀNG PRODUCTION** — Phase 01-18B đã merge về `main` + tag `v1.0.1`.
+**Trạng thái**: ✅ **SẴN SÀNG PRODUCTION** — Phase 01-18B đã merge về `main` + tag `v1.0.2`.
 
 Brand hiện tại: **GVD Simvana** (code dùng "GVD simvana" — chữ "s" thường).
 
 | Item              | Value                                                                  |
 | ----------------- | ---------------------------------------------------------------------- |
-| Version           | `v1.0.1` (Phase 18B + WebGL delete + fixes)                            |
+| Version           | `v1.0.2` (WebGL Mac-zip + Unity PWA fixes)                             |
 | Tag hash v1.0.0   | `b5c3593` (Phase 18 gốc)                                               |
 | Tag hash v1.0.1   | `366a3fb` (Phase 18B merge)                                            |
-| Commit gần nhất   | `abaabc1` (feat(webgl): instructor delete WebGL)                       |
-| Tổng tests PASS   | **429 unit** (46 suites) + 49 integration + 19 security + 14 E2E = 511 |
+| Tag hash v1.0.2   | `b721105` (WebGL fixes — Mac junk + Unity PWA SW)                      |
+| Commit gần nhất   | `b721105` (fix(webgl): skip Unity PWA ServiceWorker)                   |
+| Tổng tests PASS   | **435 unit** (46 suites) + 49 integration + 19 security + 14 E2E = 517 |
 | Frontend routes   | 36 (Backup tab + các page hiện có)                                     |
 | Prisma migrations | 12 files (+ `20260421160240_add_backup_model`)                         |
 | Backend modules   | 32 (+ `BackupModule`)                                                  |
@@ -273,6 +274,33 @@ Brand hiện tại: **GVD Simvana** (code dùng "GVD simvana" — chữ "s" thư
   - `fde45bc` fix(instructor): curriculum delete + WebGL stuck
 - Push `origin/main` OK (271f7af..366a3fb)
 
+### 🩹 WebGL hotfix session (22/04/2026) — v1.0.2
+
+**Trigger**: Instructor upload `WebGL_Ver02.zip` (115MB, Unity 2022 PWA build, zipped on Mac) → 2 bug lộ ra theo thứ tự:
+
+**Fix 1 — Mac-zipped build `__MACOSX/` junk** (`dc947d2`):
+
+- Root cause: file zip trên Mac chứa `__MACOSX/` + `.DS_Store` + `._*` (AppleDouble) sidecar → zip có 2 top-level folders (`WebGL/` + `__MACOSX/`) → `stripCommonPrefix()` fail điều kiện `allShare` → return paths unchanged → files lên MinIO với prefix `{lessonId}/WebGL/*` thay vì `{lessonId}/*` → frontend predict URL `{lessonId}/index.html` → **iframe student 404**
+- Fix: thêm `filterJunkPaths()` trong `webgl-validator.ts` lọc `__MACOSX/**`, `.DS_Store`, basename starting `._`, `Thumbs.db`, `desktop.ini` (case-insensitive) TRƯỚC khi chạy `stripCommonPrefix`
+- Apply ở cả `summariseWebGLZip()` (pre-flight) và `webgl-extract.processor.ts` (worker) → validator + extractor agree on "what's at root"
+- Tests: +6 (regression Mac-zipped build + filterJunkPaths matrix 5 cases)
+
+**Fix 2 — Unity PWA ServiceWorker 30% stuck** (`b721105`):
+
+- Root cause: Unity 2022+ với "Enable PWA" option sinh `ServiceWorker.js` có `cache.addAll(['WebGL.loader.js', 'WebGL.framework.js.gz', 'WebGL.data.gz', 'WebGL.wasm.gz', 'style.css'])` — pre-cache toàn bộ ~117MB trong install event. Student iframe register SW → browser download mọi file 2 LẦN ĐỒNG THỜI: 1 cho Unity loader boot, 1 cho SW cache. Bandwidth/memory tranh nhau trên cùng origin (MinIO) → Unity's progress **stall ở ~30%** khi đang pull `.data.gz` (104MB)
+- Phát hiện: instructor preview 400×300 nên memory đủ + test nhanh xong, student view full viewport 1920×1080 + first-time fresh → stuck
+- Fix: extractor skip `ServiceWorker.js` + `manifest.webmanifest` khi upload → `navigator.serviceWorker.register("ServiceWorker.js")` trong index.html 404 gracefully (Promise reject silently, không `.catch`) → Unity loader độc chiếm bandwidth → load OK
+- PWA không cần thiết cho LMS (bài học load qua authenticated route, không install như PWA app)
+- Không có file modification — index.html giữ nguyên, chỉ 2 artifacts bị skip ở extractor
+
+**Tổng kết v1.0.2**:
+
+- **435/435 backend tests PASS** (+6 so với v1.0.1 baseline 429)
+- 2 commits: `dc947d2` (Mac junk) + `b721105` (Unity PWA)
+- Tag `v1.0.2` + push `origin/v1.0.2`
+- Existing lesson `cmo9s73ez000pau9mpi89cx1r`: đã xoá thủ công 2 file `ServiceWorker.js` + `manifest.webmanifest` trong MinIO → student hard-refresh test được ngay (Ctrl+Shift+R + unregister SW cũ trong DevTools)
+- Lesson upload mới: tự động skip cả junk + PWA artifacts
+
 ### 🩹 Session wrap-up (22/04/2026) — v1.0.1
 
 - Commit `abaabc1` — **feat(webgl): allow instructor to delete uploaded WebGL file** (endpoint + service + instructor button + student guard + `WEBGL_DELETED` audit)
@@ -375,6 +403,12 @@ Brand hiện tại: **GVD Simvana** (code dùng "GVD simvana" — chữ "s" thư
 ---
 
 ## 6. Bugs đã fix gần đây
+
+### Session 22/04 chiều — WebGL hotfixes v1.0.2
+
+- **WebGL Mac-zipped build fail** (`dc947d2`): file zip trên Mac chứa `__MACOSX/` + `.DS_Store` + `._*` → `stripCommonPrefix()` fail → files vào sai đường dẫn MinIO → student iframe 404. Fix: thêm `filterJunkPaths()` lọc OS junk trước khi detect common prefix. Apply cả ở validator (pre-flight) và extractor (worker). +6 tests.
+
+- **WebGL 30% stuck — Unity PWA ServiceWorker** (`b721105`): Unity 2022+ bật PWA → `ServiceWorker.js` pre-cache 117MB qua `cache.addAll()` trong install event → tranh bandwidth với Unity loader trên cùng origin → progress bar dừng ~30% khi đang download `.data.gz` (104MB). Fix: extractor skip `ServiceWorker.js` + `manifest.webmanifest` → SW registration 404 gracefully → Unity độc chiếm bandwidth. Instructor preview 400×300 không lộ bug vì memory pressure thấp hơn + tested xong nhanh.
 
 ### Session 22/04 — Wrap-up fixes (commit `abaabc1` + predecessors)
 
