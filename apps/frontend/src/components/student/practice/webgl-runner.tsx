@@ -1,8 +1,8 @@
 'use client';
 
 import { cn } from '@lms/ui';
-import { Clock, ListOrdered, Loader2, Trophy } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Clock, ListOrdered, Loader2, Maximize2, Minimize2, Trophy } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 /* eslint-disable import/order -- prettier re-sorts the sibling import above aliases; keep build green */
@@ -116,6 +116,33 @@ export function WebGLRunner({
   const [timeLeft, setTimeLeft] = useState<number | null>(timeLimit != null ? timeLimit : null);
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const [activeSafetyViolation, setActiveSafetyViolation] = useState<SafetyItemConfig | null>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Fullscreen toggle — drives the browser's native fullscreen API on
+  // the 16:9 stage wrapper. We listen for `fullscreenchange` rather
+  // than trusting our own `setIsFullscreen` because the user can also
+  // exit with Esc or the browser chrome, and we need the button icon
+  // + aspect-ratio override to follow.
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    const el = stageRef.current;
+    if (!el) return;
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await el.requestFullscreen();
+      }
+    } catch (err) {
+      toast.error('Trình duyệt không cho phép toàn màn hình: ' + (err as Error).message);
+    }
+  }, []);
 
   // =====================================================
   // Send config to Unity once the iframe loads.
@@ -313,10 +340,15 @@ export function WebGLRunner({
               - height: implicit from aspect-ratio
             so the stage never overflows the viewport in either orientation. */}
         <div
+          ref={stageRef}
           className="relative overflow-hidden rounded-lg shadow-2xl"
           style={{
-            aspectRatio: '16 / 9',
-            width: 'min(100%, calc((100vh - 96px) * 16 / 9))',
+            // When fullscreen, the browser blows the element up to 100vw × 100vh
+            // and ignores our aspect-ratio / width, so we drop both constraints
+            // to avoid a forced letterbox inside an already-fullscreen window.
+            ...(isFullscreen
+              ? { width: '100%', height: '100%', aspectRatio: undefined }
+              : { aspectRatio: '16 / 9', width: 'min(100%, calc((100vh - 96px) * 16 / 9))' }),
           }}
         >
           {!iframeLoaded && (
@@ -363,6 +395,19 @@ export function WebGLRunner({
               {completedSteps}/{totalSteps} · {progressPct}%
             </div>
           </div>
+
+          {/* Fullscreen toggle — lives OUTSIDE the pointer-events-none HUD
+              so clicks register. Bottom-right corner keeps it out of the
+              way of the HUD chips + safety-violation popup (top-centre). */}
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="absolute bottom-4 right-4 rounded-full bg-black/60 p-2 text-white backdrop-blur transition hover:bg-black/80 focus:outline-none focus:ring-2 focus:ring-primary"
+            title={isFullscreen ? 'Thu nhỏ (Esc)' : 'Toàn màn hình'}
+            aria-label={isFullscreen ? 'Thoát toàn màn hình' : 'Vào chế độ toàn màn hình'}
+          >
+            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </button>
         </div>
       </div>
 
