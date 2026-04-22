@@ -186,7 +186,7 @@ export function AiChatWidget({ lessonId, suggestedQuestions = [] }: ChatWidgetPr
                 <Bot className="h-5 w-5" />
                 <div className="flex flex-col leading-tight">
                   <span className="text-sm font-semibold">Trợ lý AI</span>
-                  <span className="text-[11px] opacity-80">Gemini · GVD simvana</span>
+                  <span className="text-[11px] opacity-80">Gemini · GVD next-gen LMS</span>
                 </div>
               </div>
               <button

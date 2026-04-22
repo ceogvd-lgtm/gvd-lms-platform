@@ -120,7 +120,7 @@ export function AdminSidebar({ collapsed = false }: AdminSidebarProps) {
           </span>
           {!collapsed && (
             <span className="text-base">
-              GVD simvana <span className="text-secondary-300">· Admin</span>
+              GVD next-gen LMS <span className="text-secondary-300">· Admin</span>
             </span>
           )}
         </Link>

@@ -119,7 +119,7 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
           </span>
           {!collapsed && (
             <span className="text-base">
-              GVD <span className="text-secondary">simvana</span>
+              GVD <span className="text-secondary">next-gen LMS</span>
             </span>
           )}
         </Link>

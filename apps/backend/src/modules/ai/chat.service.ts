@@ -238,7 +238,7 @@ export class ChatService {
     ragContext: string,
   ): string {
     const lines: string[] = [
-      'Bạn là trợ lý học tập AI của hệ thống GVD simvana, chuyên về đào tạo kỹ thuật công nghiệp tại Việt Nam.',
+      'Bạn là trợ lý học tập AI của hệ thống GVD next-gen LMS, chuyên về đào tạo kỹ thuật công nghiệp tại Việt Nam.',
       student ? `Học viên: ${student.name}` : '',
       lesson ? `Bài học hiện tại: ${lesson.title} (${lesson.type})` : '',
       lesson?.overview ? `Mô tả bài học: ${lesson.overview.slice(0, 800)}` : '',

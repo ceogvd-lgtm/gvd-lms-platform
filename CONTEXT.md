@@ -24,7 +24,7 @@
 
 **Trạng thái**: ✅ **SẴN SÀNG PRODUCTION** — Phase 01-18B đã merge về `main` + tag `v1.0.4`.
 
-Brand hiện tại: **GVD Simvana** (code dùng "GVD simvana" — chữ "s" thường).
+Brand hiện tại: **GVD next-gen LMS** (thay từ "GVD Simvana" ngày 22/04 tối — tên mới nhấn mạnh vị thế LMS thế hệ mới).
 
 | Item              | Value                                                                  |
 | ----------------- | ---------------------------------------------------------------------- |
@@ -39,7 +39,7 @@ Brand hiện tại: **GVD Simvana** (code dùng "GVD simvana" — chữ "s" thư
 | Frontend routes   | 36 (Backup tab + các page hiện có)                                     |
 | Prisma migrations | 12 files (+ `20260421160240_add_backup_model`)                         |
 | Backend modules   | 32 (+ `BackupModule`)                                                  |
-| Brand             | **GVD Simvana**                                                        |
+| Brand             | **GVD next-gen LMS**                                                   |
 
 ---
 
@@ -275,6 +275,15 @@ Brand hiện tại: **GVD Simvana** (code dùng "GVD simvana" — chữ "s" thư
   - `8fd8d30` feat(backup): pg_dump system
   - `fde45bc` fix(instructor): curriculum delete + WebGL stuck
 - Push `origin/main` OK (271f7af..366a3fb)
+
+### 🎨 Brand rename → GVD next-gen LMS (22/04/2026 cuối ngày)
+
+- Rename 30 user-visible strings từ "GVD simvana" → "GVD next-gen LMS". Tên mới nhấn mạnh vị thế LMS thế hệ mới với AI + 3D simulation.
+- Scope: frontend (page titles, sidebars, auth pages, certificate print, manifest) + backend (email templates, cert institution, Gemini system prompt, Excel workbook creator, seed defaults) + config (`.env.production.example` SMTP_FROM)
+- Technical identifiers giữ nguyên: `@lms/*` packages · `lms-uploads` bucket · `LMS_*` env vars · docker container names · DB column names
+- DB: `SystemSetting.org.name` + `smtp.from` cần SQL update runtime (existing rows không đổi theo seed, xem `scripts/` hoặc dùng UI `/admin/settings`)
+- Split span pattern `<span className="text-secondary">simvana</span>` → `<span className="text-secondary">next-gen LMS</span>` (giữ nguyên màu nhấn violet cho phần tên)
+- Documents cũ (`GVD_Simvana_Catalogue_2026_*.pptx`, `Huong_Dan_*.docx`): giữ nguyên filename (historical artifacts, untracked)
 
 ### 🩹 WebGL iframe 16:9 (22/04/2026 tối) — v1.0.4
 

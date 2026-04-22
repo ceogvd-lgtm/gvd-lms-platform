@@ -19,8 +19,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'GVD simvana',
-  description: 'GVD simvana — Hệ thống đào tạo thực hành kỹ thuật công nghiệp tích hợp AI',
+  title: 'GVD next-gen LMS',
+  description: 'GVD next-gen LMS — Hệ thống đào tạo thực hành kỹ thuật công nghiệp tích hợp AI',
   icons: {
     icon: '/logo-gvd.svg',
   },
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'GVD simvana',
+    title: 'GVD next-gen LMS',
   },
 };
 

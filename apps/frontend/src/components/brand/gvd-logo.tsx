@@ -1,7 +1,7 @@
 import { cn } from '@lms/ui';
 
 /**
- * GVD simvana logo — inline SVG so that color follows `currentColor`.
+ * GVD next-gen LMS logo — inline SVG so that color follows `currentColor`.
  * Pass `className` with any Tailwind text-* color utility.
  *
  * Original source: Logo GVD dương bản (white positive version), stored at
@@ -13,7 +13,7 @@ import { cn } from '@lms/ui';
  */
 export function GvdLogo({
   className,
-  title = 'GVD simvana',
+  title = 'GVD next-gen LMS',
 }: {
   className?: string;
   title?: string;

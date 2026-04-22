@@ -29,7 +29,7 @@ export class MailService implements OnModuleInit {
     const port = Number(this.config.get<string>('SMTP_PORT') ?? 587);
     const user = this.config.get<string>('SMTP_USER');
     const pass = this.config.get<string>('SMTP_PASS');
-    this.from = this.config.get<string>('SMTP_FROM') ?? 'GVD simvana <no-reply@gvd.local>';
+    this.from = this.config.get<string>('SMTP_FROM') ?? 'GVD next-gen LMS <no-reply@gvd.local>';
 
     this.transporter = nodemailer.createTransport({
       host,

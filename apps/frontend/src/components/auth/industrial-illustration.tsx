@@ -66,7 +66,7 @@ export function IndustrialIllustration() {
           <GvdLogo className="h-16 w-16 text-white" />
         </div>
         <h1 className="mb-3 text-4xl font-bold leading-tight">
-          GVD <span className="text-secondary-300">simvana</span>
+          GVD <span className="text-secondary-300">next-gen LMS</span>
         </h1>
         <p className="text-base text-blue-100/80 leading-relaxed">
           Hệ thống đào tạo thực hành kỹ thuật công nghiệp thế hệ mới, tích hợp AI và mô phỏng 3D.

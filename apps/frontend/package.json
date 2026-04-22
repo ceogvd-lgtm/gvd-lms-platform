@@ -2,7 +2,7 @@
   "name": "@lms/frontend",
   "version": "0.1.0",
   "private": true,
-  "description": "GVD simvana — Next.js 14 App Router frontend",
+  "description": "GVD next-gen LMS — Next.js 14 App Router frontend",
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
