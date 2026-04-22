@@ -299,50 +299,69 @@ export function WebGLRunner({
   );
 
   return (
-    <div className="relative -mx-4 -my-6 overflow-hidden md:-mx-6">
-      {/* WebGL iframe — fills all available height */}
-      <div className="relative h-[calc(100vh-64px)] bg-black">
-        {!iframeLoaded && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="flex flex-col items-center gap-3">
-              <Loader2 className="h-10 w-10 animate-spin text-primary" />
-              <p className="text-sm font-semibold text-white">Đang tải bài thực hành…</p>
-              <p className="max-w-xs text-center text-xs text-white/60">
-                Mẹo: đảm bảo bạn đã đọc quy tắc an toàn trước khi bắt đầu thao tác.
-              </p>
-            </div>
-          </div>
-        )}
-        <iframe
-          ref={iframeRef}
-          src={webglUrl}
-          title="Virtual Lab"
-          onLoad={() => setIframeLoaded(true)}
-          className="block h-full w-full border-0"
-          sandbox="allow-same-origin allow-scripts allow-pointer-lock allow-popups allow-forms"
-          allow="autoplay; fullscreen; gamepad; xr-spatial-tracking"
-        />
-
-        {/* HUD overlay — semi-transparent, non-interactive */}
-        <div className="pointer-events-none absolute right-4 top-4 flex flex-col items-end gap-2">
-          {timeLeft != null && (
-            <div
-              className={cn(
-                'rounded-full px-3 py-1 text-xs font-semibold text-white backdrop-blur',
-                timeLeft < 30 ? 'bg-rose-600/85' : 'bg-black/60',
-              )}
-            >
-              <Clock className="mr-1 inline h-3.5 w-3.5" />
-              {fmtClock(timeLeft)}
+    <div className="relative -mx-4 -my-6 md:-mx-6">
+      {/* Stage — dark backdrop filling the lesson viewport; centres the 16:9
+          stage inside. Padding gives a bit of gutter on very large screens so
+          the canvas doesn't kiss the window edges. */}
+      <div className="flex min-h-[calc(100vh-64px)] items-center justify-center bg-black p-2 md:p-4">
+        {/* 16:9 stage — Unity's canvas is native 1920×1080; forcing the iframe
+            to 16:9 prevents the engine from scaling itself into a squished
+            portrait shape on tall monitors (the old layout stretched the
+            iframe to the full viewport height and Unity's internal scaler
+            matched the CSS size, cutting off controls). We bound BOTH axes:
+              - width:  min(100%, available-height × 16/9)
+              - height: implicit from aspect-ratio
+            so the stage never overflows the viewport in either orientation. */}
+        <div
+          className="relative overflow-hidden rounded-lg shadow-2xl"
+          style={{
+            aspectRatio: '16 / 9',
+            width: 'min(100%, calc((100vh - 96px) * 16 / 9))',
+          }}
+        >
+          {!iframeLoaded && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black">
+              <div className="flex flex-col items-center gap-3">
+                <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                <p className="text-sm font-semibold text-white">Đang tải bài thực hành…</p>
+                <p className="max-w-xs text-center text-xs text-white/60">
+                  Mẹo: đảm bảo bạn đã đọc quy tắc an toàn trước khi bắt đầu thao tác.
+                </p>
+              </div>
             </div>
           )}
-          <div className="rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
-            <Trophy className="mr-1 inline h-3.5 w-3.5" />
-            {liveScore} / {maxScore}
-          </div>
-          <div className="rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
-            <ListOrdered className="mr-1 inline h-3.5 w-3.5" />
-            {completedSteps}/{totalSteps} · {progressPct}%
+          <iframe
+            ref={iframeRef}
+            src={webglUrl}
+            title="Virtual Lab"
+            onLoad={() => setIframeLoaded(true)}
+            className="block h-full w-full border-0 bg-black"
+            sandbox="allow-same-origin allow-scripts allow-pointer-lock allow-popups allow-forms"
+            allow="autoplay; fullscreen; gamepad; xr-spatial-tracking"
+          />
+
+          {/* HUD overlay — lives inside the 16:9 frame so the chips never
+              float over the black letterbox gutters. */}
+          <div className="pointer-events-none absolute right-4 top-4 flex flex-col items-end gap-2">
+            {timeLeft != null && (
+              <div
+                className={cn(
+                  'rounded-full px-3 py-1 text-xs font-semibold text-white backdrop-blur',
+                  timeLeft < 30 ? 'bg-rose-600/85' : 'bg-black/60',
+                )}
+              >
+                <Clock className="mr-1 inline h-3.5 w-3.5" />
+                {fmtClock(timeLeft)}
+              </div>
+            )}
+            <div className="rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
+              <Trophy className="mr-1 inline h-3.5 w-3.5" />
+              {liveScore} / {maxScore}
+            </div>
+            <div className="rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
+              <ListOrdered className="mr-1 inline h-3.5 w-3.5" />
+              {completedSteps}/{totalSteps} · {progressPct}%
+            </div>
           </div>
         </div>
       </div>
