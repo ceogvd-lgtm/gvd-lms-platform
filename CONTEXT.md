@@ -3,7 +3,7 @@
 > File này chứa **trạng thái động** — cập nhật sau mỗi phase.
 > Quy tắc bất biến → xem `CLAUDE.md`.
 
-**Cập nhật lần cuối**: 21/04/2026
+**Cập nhật lần cuối**: 22/04/2026
 
 ---
 
@@ -22,21 +22,21 @@
 
 ## 1. Tình trạng production
 
-**Trạng thái**: ✅ **SẴN SÀNG PRODUCTION** — Phase 01-18B đã merge về `main` + tag `v1.0.0`.
+**Trạng thái**: ✅ **SẴN SÀNG PRODUCTION** — Phase 01-18B đã merge về `main` + tag `v1.0.1`.
 
 Brand hiện tại: **GVD Simvana** (code dùng "GVD simvana" — chữ "s" thường).
 
-| Item                | Value                                                                  |
-| ------------------- | ---------------------------------------------------------------------- |
-| Version             | `v1.0.0`                                                               |
-| Tag hash            | `b5c3593` (merge Phase 18)                                             |
-| Commit Phase 18 gốc | `f8a3ae6`                                                              |
-| Commit gần nhất     | `366a3fb` (merge Phase 18B — backup + brand + fixes)                   |
-| Tổng tests PASS     | **429 unit** (46 suites) + 49 integration + 19 security + 14 E2E = 511 |
-| Frontend routes     | 36 (Backup tab + các page hiện có)                                     |
-| Prisma migrations   | 12 files (+ `20260421160240_add_backup_model`)                         |
-| Backend modules     | 32 (+ `BackupModule`)                                                  |
-| Brand               | **GVD Simvana**                                                        |
+| Item              | Value                                                                  |
+| ----------------- | ---------------------------------------------------------------------- |
+| Version           | `v1.0.1` (Phase 18B + WebGL delete + fixes)                            |
+| Tag hash v1.0.0   | `b5c3593` (Phase 18 gốc)                                               |
+| Tag hash v1.0.1   | `366a3fb` (Phase 18B merge)                                            |
+| Commit gần nhất   | `abaabc1` (feat(webgl): instructor delete WebGL)                       |
+| Tổng tests PASS   | **429 unit** (46 suites) + 49 integration + 19 security + 14 E2E = 511 |
+| Frontend routes   | 36 (Backup tab + các page hiện có)                                     |
+| Prisma migrations | 12 files (+ `20260421160240_add_backup_model`)                         |
+| Backend modules   | 32 (+ `BackupModule`)                                                  |
+| Brand             | **GVD Simvana**                                                        |
 
 ---
 
@@ -273,6 +273,15 @@ Brand hiện tại: **GVD Simvana** (code dùng "GVD simvana" — chữ "s" thư
   - `fde45bc` fix(instructor): curriculum delete + WebGL stuck
 - Push `origin/main` OK (271f7af..366a3fb)
 
+### 🩹 Session wrap-up (22/04/2026) — v1.0.1
+
+- Commit `abaabc1` — **feat(webgl): allow instructor to delete uploaded WebGL file** (endpoint + service + instructor button + student guard + `WEBGL_DELETED` audit)
+- Tag `v1.0.1` — push `origin/v1.0.1` OK
+- Docs: `CONTEXT.md` cập nhật (session fixes · endpoint mới · v1.0.1 hashtag)
+- SystemSetting `org.name` + `smtp.from` → "GVD Simvana" (SQL update sau seed — runtime pickup)
+- Catalogue 2026 clean Full HD: `docs/user-guides/GVD_Simvana_Catalogue_2026_Clean_FullHD.pptx` (sans-serif upright, red+white 70/30, bố cục 3-zone slide 2 không overlap)
+- User guide docs 4 roles: `Huong_Dan_{Admin,Cai_Dat_He_Thong,Giang_Vien,Hoc_Vien}.docx` (untracked — review trước khi commit)
+
 ---
 
 ## 3. Endpoints hiện có
@@ -301,9 +310,9 @@ Brand hiện tại: **GVD Simvana** (code dùng "GVD simvana" — chữ "s" thư
 
 `/progress/*` (4) · `/analytics/*` (7 — department, cohort, system, lesson-difficulty, heatmap, export, schedule-report)
 
-### Content engines (~18)
+### Content engines (~19)
 
-`/scorm/*` · `/xapi/*` · `/video-progress/*` · `/practice/*` · `/lessons/:id/context` · `/storage/*` (upload)
+`/scorm/*` · `/xapi/*` · `/video-progress/*` · `/practice/*` · `/lessons/:id/context` · `/storage/*` (upload) · `POST /practice-contents/:lessonId/upload-webgl` · `GET /practice-contents/:lessonId/extract-status` · **`DELETE /practice-contents/:lessonId/webgl`** [INSTRUCTOR DRAFT-only | ADMIN+ override]
 
 ### Certificate (8)
 
@@ -366,6 +375,29 @@ Brand hiện tại: **GVD Simvana** (code dùng "GVD simvana" — chữ "s" thư
 ---
 
 ## 6. Bugs đã fix gần đây
+
+### Session 22/04 — Wrap-up fixes (commit `abaabc1` + predecessors)
+
+- **WebGL delete cho instructor** (`abaabc1`): Thêm `DELETE /practice-contents/:lessonId/webgl` — giảng viên upload nhầm file giờ có thể xoá lại. Permission gates:
+  - INSTRUCTOR: chỉ xoá được khi course đang `DRAFT` hoặc `PENDING_REVIEW` (tránh làm vỡ trải nghiệm học viên đang học khoá `PUBLISHED`)
+  - ADMIN / SUPER_ADMIN: override mọi trạng thái (xử lý sự cố)
+  - Cleanup cả cây MinIO `content/webgl/<lessonId>/*` qua `storage.deletePrefix()` (best-effort — weekly cron sẽ dọn tiếp nếu sót)
+  - `PracticeContent.webglUrl = ''` (giữ row để preserve `scoringConfig` + `safetyChecklist` + `introduction` cho lần upload lại) → KHÔNG động vào FK `PracticeAttempt`
+  - AuditLog action mới: `WEBGL_DELETED` với `oldValue.webglUrl` đầy đủ
+  - Student guard (`practice-tab.tsx`): khi `webglUrl === ''` → hiển thị card amber "Nội dung đang được cập nhật" thay vì iframe trắng / toast muộn
+  - Frontend button trong ready-state của `practice-content-editor.tsx`: `useMutation` + confirm dialog + toast + invalidate cache
+
+- **Nút "Xem" course 404** (`09bdb43`/`f45be97`): instructor `course-card.tsx` + `courses/page.tsx` trỏ `/courses/:id` (không tồn tại) → đổi `/instructor/courses/:id/edit`
+
+- **404 `/notifications`** (`5ea1c8d`/`271f7af`): chuông notification bell chuyển hướng `/notifications` nhưng page chưa có → thêm page `/app/(dashboard)/notifications/page.tsx` list tất cả thông báo + mark-read bulk
+
+- **"Gửi duyệt" button sai chỗ**: trước đây nằm trong course card → chuyển sang header của `/instructor/lessons/[id]/edit` (chỉ hiện khi `course.status === DRAFT`). Thêm back-link "← Khoá học: [tên]" + badge status. Instructor muốn sửa khi đang `PENDING_REVIEW` → click "Huỷ gửi duyệt" trước.
+
+- **Chapter/Lesson edit + move + withdraw**: fixes bundled trong các phase trước — chapter dùng inline edit trong curriculum tree, lesson có drag-reorder dnd-kit + withdraw CTA khi `PENDING_REVIEW`
+
+- **WebGL upload stuck-on-fail** (`fde45bc`): zombie polling sau fail + file input cached value + thiếu retry CTA. Fix: clear `jobId` ở success/fail paths · `e.target.value = ''` sau onChange · nút "Thử lại" + "Chọn file khác" với `key` prop force remount
+
+- **Curriculum delete buttons** (`fde45bc`): `/admin/curriculum` thiếu wiring nút Trash cho Course/Chapter/Lesson (backend sẵn có) → thread `onDeleteCourse/onDeleteChapter/onDeleteLesson` props qua Department → Subject → Course → Chapter → Lesson
 
 ### Phase 18 post-merge (21/04)
 
