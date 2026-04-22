@@ -1,15 +1,17 @@
 import { randomUUID } from 'node:crypto';
 
-import { Role } from '@lms/database';
+import { CourseStatus, Role } from '@lms/database';
 import { InjectQueue } from '@nestjs/bullmq';
 import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import type { Queue } from 'bullmq';
 
+import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import {
   ALLOWED_MIME,
@@ -18,6 +20,7 @@ import {
   WEBGL_EXTRACT_QUEUE,
 } from '../../common/storage/storage.constants';
 import { StorageService } from '../../common/storage/storage.service';
+import { extractMinioKey } from '../../common/storage/storage.utils';
 import type { WebglExtractJob } from '../storage/webgl-extract.processor';
 
 import { summariseWebGLZip, validateWebGLSummary } from './webgl-validator';
@@ -58,9 +61,12 @@ export interface WebGLUploadResult {
  */
 @Injectable()
 export class WebGLUploadService {
+  private readonly logger = new Logger(WebGLUploadService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly audit: AuditService,
     @InjectQueue(WEBGL_EXTRACT_QUEUE) private readonly queue: Queue<WebglExtractJob>,
   ) {}
 
@@ -139,6 +145,98 @@ export class WebGLUploadService {
       projectName: summary.projectName,
       predictedUrl,
     };
+  }
+
+  /**
+   * Xoá WebGL khỏi 1 bài học — dùng khi instructor upload nhầm file.
+   *
+   * Quyền:
+   *   - INSTRUCTOR chỉ xoá được khi course đang DRAFT hoặc PENDING_REVIEW
+   *     (tránh làm vỡ trải nghiệm học viên đang học khoá PUBLISHED).
+   *   - ADMIN / SUPER_ADMIN override mọi trạng thái.
+   *
+   * Tác động:
+   *   1. Dọn toàn bộ cây MinIO `content/webgl/{lessonId}/*`
+   *      (index.html + loader.js + data + framework.js + wasm + ...).
+   *   2. Set `PracticeContent.webglUrl = ''` (không xoá row vì còn giữ
+   *      scoringConfig + safetyChecklist + introduction cho lần upload
+   *      lại). Row PracticeContent bản thân KHÔNG động, không ảnh hưởng
+   *      `PracticeAttempt` FK onDelete: Cascade.
+   *   3. AuditLog `WEBGL_DELETED`.
+   *
+   * Student side: frontend guard kiểm tra `webglUrl === ''` → hiển thị
+   * "Nội dung đang được cập nhật" thay vì iframe trắng.
+   */
+  async deleteWebGL(
+    actor: Actor,
+    lessonId: string,
+    ipAddress: string,
+  ): Promise<{ ok: true; message: string }> {
+    await this.assertOwner(actor, lessonId);
+
+    const lesson = await this.prisma.client.lesson.findUnique({
+      where: { id: lessonId },
+      include: {
+        chapter: { include: { course: { select: { status: true, title: true } } } },
+        practiceContent: { select: { id: true, webglUrl: true } },
+      },
+    });
+
+    if (!lesson?.practiceContent) {
+      throw new NotFoundException('Bài giảng này chưa có nội dung thực hành');
+    }
+    const { practiceContent } = lesson;
+    if (!practiceContent.webglUrl) {
+      throw new BadRequestException('Bài giảng này chưa có WebGL để xoá');
+    }
+
+    // Business rule: INSTRUCTOR không được xoá WebGL trong khoá PUBLISHED
+    // để tránh làm vỡ trải nghiệm học viên đang học. ADMIN/SUPER_ADMIN
+    // được override (xử lý sự cố).
+    const courseStatus = lesson.chapter.course.status;
+    if (actor.role === Role.INSTRUCTOR && courseStatus === CourseStatus.PUBLISHED) {
+      throw new BadRequestException(
+        'Không thể xoá WebGL từ bài học trong khoá đã XUẤT BẢN. ' +
+          'Vui lòng huỷ xuất bản trước, hoặc liên hệ admin để can thiệp.',
+      );
+    }
+
+    // 1. Dọn MinIO tree `content/webgl/<lessonId>/*`
+    const oldWebglUrl = practiceContent.webglUrl;
+    const key = extractMinioKey(oldWebglUrl);
+    if (key) {
+      const lastSlash = key.lastIndexOf('/');
+      const prefix = lastSlash > 0 ? key.slice(0, lastSlash + 1) : null;
+      if (prefix?.startsWith('content/webgl/')) {
+        try {
+          await this.storage.deletePrefix(prefix);
+          this.logger.log(`Deleted WebGL prefix=${prefix} for lesson=${lessonId}`);
+        } catch (err) {
+          // Không block DB update — MinIO cleanup best-effort, sẽ được
+          // weekly storage-cleanup cron dọn tiếp nếu sót.
+          this.logger.warn(`WebGL cleanup failed prefix=${prefix}: ${(err as Error).message}`);
+        }
+      }
+    }
+
+    // 2. Clear DB field (giữ row PracticeContent)
+    await this.prisma.client.practiceContent.update({
+      where: { lessonId },
+      data: { webglUrl: '' },
+    });
+
+    // 3. Audit log
+    await this.audit.log({
+      userId: actor.id,
+      action: 'WEBGL_DELETED',
+      targetType: 'Lesson',
+      targetId: lessonId,
+      ipAddress,
+      oldValue: { webglUrl: oldWebglUrl },
+      newValue: { webglUrl: '' },
+    });
+
+    return { ok: true, message: 'Đã xoá gói WebGL. Có thể upload lại file khác.' };
   }
 
   /**

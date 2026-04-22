@@ -552,6 +552,34 @@ function WebGLUploadPanel({
     }
   };
 
+  // Xoá WebGL đã upload — dùng khi instructor upload nhầm file.
+  // Backend reject 400 nếu course đang PUBLISHED (chỉ INSTRUCTOR bị chặn,
+  // ADMIN+ override được).
+  const deleteMut = useMutation({
+    mutationFn: () => practiceContentsApi.deleteWebGL(lessonId, accessToken!),
+    onSuccess: (res) => {
+      // Clear MinIO URL ở form cha + reset mọi state về idle
+      onUploaded('');
+      resetForRetry();
+      toast.success(res.message);
+    },
+    onError: (err) => {
+      const msg = err instanceof ApiError ? err.message : 'Xoá WebGL thất bại';
+      toast.error(msg);
+    },
+  });
+
+  const handleDelete = () => {
+    if (deleteMut.isPending) return;
+    const ok = window.confirm(
+      'Xoá gói WebGL khỏi bài giảng này?\n\n' +
+        'Toàn bộ file Unity (index.html, loader.js, data, wasm...) sẽ bị xoá khỏi MinIO. ' +
+        'Sau khi xoá, bạn có thể upload lại file khác.\n\n' +
+        'LƯU Ý: Nếu khoá học đã PUBLISHED, backend sẽ từ chối — huỷ xuất bản trước khi xoá.',
+    );
+    if (ok) deleteMut.mutate();
+  };
+
   const upload = useMutation({
     mutationFn: (file: File) => practiceContentsApi.uploadWebGL(lessonId, file, accessToken!),
     onMutate: () => {
@@ -726,13 +754,30 @@ function WebGLUploadPanel({
 
       {status === 'ready' && webglUrl && (
         <div className="space-y-3">
-          <div className="flex items-center gap-2 rounded-button border border-emerald-500/40 bg-emerald-500/5 px-3 py-2 text-sm">
-            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+          <div className="flex flex-wrap items-center gap-2 rounded-button border border-emerald-500/40 bg-emerald-500/5 px-3 py-2 text-sm">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
             <span className="flex-1 font-semibold text-emerald-700 dark:text-emerald-400">
               WebGL sẵn sàng {projectName && `— gói "${projectName}"`}
             </span>
-            <Button size="sm" variant="outline" onClick={() => setStatus('idle')}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setStatus('idle')}
+              disabled={deleteMut.isPending}
+              title="Giữ nguyên file cũ, chỉ reset UI để upload đè"
+            >
               Tải lại
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleDelete}
+              disabled={deleteMut.isPending}
+              className="border-rose-400 text-rose-600 hover:bg-rose-500/10 dark:text-rose-400"
+              title="Xoá hoàn toàn file Unity khỏi MinIO"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {deleteMut.isPending ? 'Đang xoá…' : 'Xoá'}
             </Button>
           </div>
           <p className="text-xs text-muted">Xem trước (400×300):</p>

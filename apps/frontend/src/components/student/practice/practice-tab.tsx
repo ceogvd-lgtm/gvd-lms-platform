@@ -99,6 +99,23 @@ export function PracticeTab({
     );
   }
 
+  // Guard: PracticeContent tồn tại nhưng giảng viên chưa upload WebGL
+  // hoặc vừa xoá file (xem `DELETE /practice-contents/:id/webgl`).
+  // Hiển thị warning card thay vì để student click "Bắt đầu" rồi nhận toast.
+  if (!pc.webglUrl) {
+    return (
+      <div className="rounded-card border border-amber-500/40 bg-amber-500/5 p-6 text-center">
+        <p className="text-base font-semibold text-amber-800 dark:text-amber-300">
+          Nội dung đang được cập nhật
+        </p>
+        <p className="mt-2 text-sm text-amber-700 dark:text-amber-400/80">
+          Giảng viên chưa upload gói WebGL cho bài thực hành này. Vui lòng quay lại sau — hoặc liên
+          hệ giảng viên nếu bạn cần học gấp.
+        </p>
+      </div>
+    );
+  }
+
   // Compose the scoring config the runner needs. PracticeContent.scoringConfig
   // already contains steps + safetyChecklist thanks to Phase 13 editor; fall
   // back to the separate safetyChecklist column if steps are absent.

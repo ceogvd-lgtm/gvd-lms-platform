@@ -250,4 +250,14 @@ export const practiceContentsApi = {
       `/practice-contents/${lessonId}/extract-status?jobId=${encodeURIComponent(jobId)}`,
       { token },
     ),
+
+  /**
+   * Xoá gói WebGL đã upload — dùng khi instructor upload nhầm file.
+   * Backend reject 400 nếu course đang PUBLISHED (INSTRUCTOR only).
+   */
+  deleteWebGL: (lessonId: string, token: string) =>
+    api<{ ok: true; message: string }>(`/practice-contents/${lessonId}/webgl`, {
+      method: 'DELETE',
+      token,
+    }),
 };
