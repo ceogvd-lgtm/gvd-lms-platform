@@ -54,6 +54,79 @@ const EXT_MIME: Record<string, string> = {
  * builds that ship without the decompression-fallback runtime — which is
  * the default setting.
  */
+/**
+ * Patch Unity's default `index.html` to defuse the PWA ServiceWorker.
+ *
+ * Unity 2022+ "Enable PWA" option emits a boilerplate registration at the
+ * top of the `<script>` block:
+ *
+ *   window.addEventListener("load", function () {
+ *     if ("serviceWorker" in navigator) {
+ *       navigator.serviceWorker.register("ServiceWorker.js");
+ *     }
+ *   });
+ *
+ * We want TWO things:
+ *   1. Never register a new SW for this origin (the extractor already
+ *      omits `ServiceWorker.js` + `manifest.webmanifest`, so registration
+ *      would 404 anyway — but we don't want the console error noise and
+ *      we want to be explicit).
+ *   2. Proactively unregister any SW that an earlier pre-fix upload may
+ *      already have installed in the learner's browser, and purge its
+ *      Cache Storage. Without this, browsers that already registered
+ *      the old SW keep running it forever (SWs survive page closes and
+ *      only self-update when their script changes — but that script is
+ *      now 404) — and the old SW's `fetch` handler clones + caches every
+ *      Unity asset (100+ MB) on each load, burning memory until Unity's
+ *      progress bar stalls at ~30%.
+ *
+ * Strategy: find the Unity registration block and replace it with a
+ * cleanup script that unregisters every SW and clears every Cache API
+ * entry scoped to this origin. Idempotent: running it a second time
+ * after cleanup is a no-op.
+ *
+ * If we can't find the registration block (Unity changes the template
+ * between versions), we inject the cleanup at the top of `<body>`
+ * anyway so at least the stale SW gets killed.
+ */
+export function patchIndexHtml(html: string): string {
+  const cleanupScript = `<script>
+// LMS extractor — neutralises Unity PWA ServiceWorker to prevent the
+// stale-SW "stuck at 30%" failure mode. Safe to run every page load.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(function (regs) {
+    regs.forEach(function (r) { r.unregister(); });
+  }).catch(function () {});
+  if (window.caches && caches.keys) {
+    caches.keys().then(function (keys) {
+      keys.forEach(function (k) { caches.delete(k); });
+    }).catch(function () {});
+  }
+}
+</script>`;
+
+  // Match the whole `window.addEventListener("load", function () { …SW register… })` block.
+  // Tolerant to single/double quotes and extra whitespace.
+  const swBlockRe =
+    /window\.addEventListener\s*\(\s*["']load["']\s*,\s*function\s*\(\s*\)\s*\{\s*if\s*\(\s*["']serviceWorker["']\s+in\s+navigator\s*\)\s*\{[^}]*serviceWorker\.register\([^)]+\)\s*;?\s*\}\s*\}\s*\)\s*;?/;
+
+  // Step 1: strip Unity's SW register block if present.
+  let out = html.replace(
+    swBlockRe,
+    '/* SW registration stripped by LMS extractor — see patchIndexHtml() */',
+  );
+
+  // Step 2: inject cleanup script at top of <body> so stale SWs installed
+  //         by a pre-fix upload self-unregister on the next page load.
+  //         Idempotent: if the script ran before, the registrations list
+  //         is empty and the caches are empty — the script is a no-op.
+  if (!out.includes('LMS extractor — neutralises Unity PWA ServiceWorker')) {
+    out = out.replace(/<body([^>]*)>/i, `<body$1>\n  ${cleanupScript}`);
+  }
+
+  return out;
+}
+
 function mimeFor(name: string): { contentType: string; contentEncoding?: 'gzip' | 'br' } {
   const lower = name.toLowerCase();
 
@@ -204,6 +277,36 @@ export class WebglExtractProcessor extends WorkerHost {
             : undefined;
         const { contentType, contentEncoding } = mimeFor(rel);
         const extraHeaders = contentEncoding ? { 'Content-Encoding': contentEncoding } : undefined;
+
+        // index.html needs in-flight patching to neutralise the Unity PWA
+        // ServiceWorker registration. We already skip `ServiceWorker.js` +
+        // `manifest.webmanifest` above, but index.html still contains the
+        // `navigator.serviceWorker.register(...)` call. That's benign on
+        // first visit (404 rejects silently), but a browser that already
+        // installed the SW from a pre-fix upload keeps it active: the SW
+        // then intercepts every `.data.gz` / `.wasm.gz` fetch and calls
+        // `cache.put(response.clone())` — doubling memory for 100+ MB
+        // responses until the tab ran out and Unity's progress stalled
+        // near 30%. We patch the HTML so (a) no new SW is registered, and
+        // (b) any previously-registered SW on this origin self-unregisters
+        // on next visit and purges its Cache Storage. Must buffer the
+        // entry — we need the content as a string.
+        if (rel === 'index.html' || rel.endsWith('/index.html')) {
+          const originalHtml = (await entry.buffer()).toString('utf8');
+          const patched = patchIndexHtml(originalHtml);
+          const patchedBuf = Buffer.from(patched, 'utf8');
+          await this.storage.upload(
+            destKey,
+            patchedBuf,
+            patchedBuf.length,
+            contentType,
+            extraHeaders,
+          );
+          uploaded += 1;
+          hasIndex = true;
+          await job.updateProgress(30 + Math.round((uploaded / entries.length) * 65));
+          continue;
+        }
 
         // `entry.stream()` yields a Readable of the decompressed bytes.
         // If the MinIO client needs a known size we fall back to buffering
