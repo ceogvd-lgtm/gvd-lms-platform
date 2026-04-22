@@ -3,7 +3,7 @@
 > File này chứa **trạng thái động** — cập nhật sau mỗi phase.
 > Quy tắc bất biến → xem `CLAUDE.md`.
 
-**Cập nhật lần cuối**: 22/04/2026 (v1.0.2)
+**Cập nhật lần cuối**: 22/04/2026 (v1.0.4)
 
 ---
 
@@ -22,18 +22,20 @@
 
 ## 1. Tình trạng production
 
-**Trạng thái**: ✅ **SẴN SÀNG PRODUCTION** — Phase 01-18B đã merge về `main` + tag `v1.0.2`.
+**Trạng thái**: ✅ **SẴN SÀNG PRODUCTION** — Phase 01-18B đã merge về `main` + tag `v1.0.4`.
 
 Brand hiện tại: **GVD Simvana** (code dùng "GVD simvana" — chữ "s" thường).
 
 | Item              | Value                                                                  |
 | ----------------- | ---------------------------------------------------------------------- |
-| Version           | `v1.0.2` (WebGL Mac-zip + Unity PWA fixes)                             |
+| Version           | `v1.0.4` (WebGL 16:9 aspect ratio + SW stale cleanup)                  |
 | Tag hash v1.0.0   | `b5c3593` (Phase 18 gốc)                                               |
 | Tag hash v1.0.1   | `366a3fb` (Phase 18B merge)                                            |
 | Tag hash v1.0.2   | `b721105` (WebGL fixes — Mac junk + Unity PWA SW)                      |
-| Commit gần nhất   | `b721105` (fix(webgl): skip Unity PWA ServiceWorker)                   |
-| Tổng tests PASS   | **435 unit** (46 suites) + 49 integration + 19 security + 14 E2E = 517 |
+| Tag hash v1.0.3   | `fbab97f` (WebGL — patch index.html + kill stale PWA SW)               |
+| Tag hash v1.0.4   | `69b2b8c` (feat: student iframe 16:9 aspect ratio)                     |
+| Commit gần nhất   | `69b2b8c` (feat(practice): lock student WebGL iframe to 16:9)          |
+| Tổng tests PASS   | **441 unit** (47 suites) + 49 integration + 19 security + 14 E2E = 523 |
 | Frontend routes   | 36 (Backup tab + các page hiện có)                                     |
 | Prisma migrations | 12 files (+ `20260421160240_add_backup_model`)                         |
 | Backend modules   | 32 (+ `BackupModule`)                                                  |
@@ -274,6 +276,39 @@ Brand hiện tại: **GVD Simvana** (code dùng "GVD simvana" — chữ "s" thư
   - `fde45bc` fix(instructor): curriculum delete + WebGL stuck
 - Push `origin/main` OK (271f7af..366a3fb)
 
+### 🩹 WebGL iframe 16:9 (22/04/2026 tối) — v1.0.4
+
+- **Feature**: Student WebGL iframe giờ khoá tỉ lệ **16:9** đúng với native Unity render target `1920×1080` thay vì stretch theo viewport height. Commit `69b2b8c`
+- Layout mới: outer stage full-width dark backdrop → flex-centre inner frame với `aspect-ratio: 16 / 9` + `width: min(100%, calc((100vh - 96px) * 16 / 9))` → bound cả 2 trục nên frame không tràn viewport bất kể ultrawide / portrait / 3:2 laptop
+- HUD chips (điểm + timer + steps) chuyển vào INSIDE frame 16:9 → không còn float qua letterbox gutters
+- Cosmetic: rounded-lg + shadow-2xl cho contrast đẹp hơn trên dark stage
+- Không thay đổi LMS Bridge postMessage protocol hoặc scoring pipeline
+- Frontend build OK — 36 routes
+
+### 🩹 WebGL stuck 30% triệt để (22/04/2026 chiều muộn) — v1.0.3
+
+**Trigger**: Sau v1.0.2, student reload vẫn stuck 30% dù `ServiceWorker.js` đã xoá khỏi MinIO.
+
+- Root cause: Student's browser đã register SW thành công từ lần upload TRƯỚC v1.0.2 fix. **SW đã register sống mãi trong browser** cho đến khi:
+  - User manual unregister trong DevTools
+  - SW script thay đổi (nhưng giờ 404 → browser không update được)
+  - Clear site data
+  - SW cũ vẫn chạy `fetch` handler → `cache.put(response.clone())` buffer 108MB vào Cache Storage → memory pressure → Unity's XHR failed → progress bar đơ
+- Fix: `patchIndexHtml()` trong extractor (commit `fbab97f`):
+  1. **Strip** Unity's `navigator.serviceWorker.register("ServiceWorker.js")` block khỏi `<script>` trong `index.html`
+  2. **Inject cleanup script** ở top `<body>` — mỗi lần page load, script tự unregister mọi SW + purge Cache Storage ở origin
+  3. Idempotent — cleanup chạy lại sau khi SW đã bị xoá là no-op
+  4. Regex tolerant single/double quotes, có fallback inject khi không match (Unity thay đổi template giữa các version)
+- Retroactive fix: `scripts/patch-webgl-index.mjs <lessonId>` — one-shot node script patch `index.html` hiện tại trong MinIO cho lesson đã upload trước v1.0.2 mà không cần instructor re-upload
+- Tests: +6 (patchIndexHtml matrix: strip / inject / preserve Unity config / idempotence / single-quote tolerance / fallback injection)
+
+**Tổng kết v1.0.3 + v1.0.4**:
+
+- **441/441 backend tests PASS** (47 suites, +6 từ v1.0.2 baseline 435)
+- 2 commits: `fbab97f` (SW cleanup patch) + `69b2b8c` (16:9 iframe)
+- Tag `v1.0.3` + `v1.0.4` push `origin` OK
+- Student mở lesson cũ: chỉ cần F12 → Application → Service Workers → Unregister + Clear site data + hard refresh (CHỈ 1 LẦN) → Unity load 100% đúng 16:9
+
 ### 🩹 WebGL hotfix session (22/04/2026) — v1.0.2
 
 **Trigger**: Instructor upload `WebGL_Ver02.zip` (115MB, Unity 2022 PWA build, zipped on Mac) → 2 bug lộ ra theo thứ tự:
@@ -403,6 +438,12 @@ Brand hiện tại: **GVD Simvana** (code dùng "GVD simvana" — chữ "s" thư
 ---
 
 ## 6. Bugs đã fix gần đây
+
+### Session 22/04 tối — WebGL 16:9 + SW cleanup (v1.0.3 + v1.0.4)
+
+- **Student iframe 16:9** (`69b2b8c` / v1.0.4): Layout cũ stretch iframe theo `h-[calc(100vh-64px)]` → Unity canvas 1920×1080 bị méo trên monitor không 16:9 (ultrawide, portrait, 3:2 laptop). Fix: `aspect-ratio: 16/9` + `width: min(100%, (100vh-96px)*16/9)` → bound cả 2 trục, frame không tràn viewport. HUD chips chuyển vào trong frame 16:9.
+
+- **Stuck 30% triệt để** (`fbab97f` / v1.0.3): v1.0.2 đã skip SW file khi upload, nhưng browser của student đã register SW từ lần upload TRƯỚC đó → SW cũ vẫn sống trong browser (SW không tự update khi script 404). SW `cache.put(response.clone())` buffer 108MB .data.gz → memory pressure → Unity XHR fail → progress đơ. Fix: `patchIndexHtml()` trong extractor (1) strip Unity's SW register block khỏi `index.html`, (2) inject cleanup script tự unregister + purge Cache Storage trên mọi page load. +6 tests. `scripts/patch-webgl-index.mjs <lessonId>` để patch lesson đã upload trước fix mà không cần re-upload.
 
 ### Session 22/04 chiều — WebGL hotfixes v1.0.2
 
