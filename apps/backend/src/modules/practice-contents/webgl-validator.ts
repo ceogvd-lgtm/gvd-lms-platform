@@ -33,9 +33,19 @@ export async function summariseWebGLZip(buffer: Buffer): Promise<WebGLZipSummary
     .filter((f) => f.type === 'File')
     .map((f) => f.path.replace(/\\/g, '/'));
 
+  // Drop OS-generated junk BEFORE detecting the common prefix. A Mac-zipped
+  // build ships with `__MACOSX/` + `.DS_Store` + `._*` AppleDouble files;
+  // Windows zips sometimes carry `Thumbs.db` / `desktop.ini`. If we leave
+  // these in, `stripCommonPrefix` sees two top-level folders (`WebGL/` and
+  // `__MACOSX/`), concludes "no shared prefix", and returns paths with the
+  // wrapper folder intact — which then places the uploaded files at
+  // `content/webgl/{lessonId}/WebGL/index.html` instead of the predicted
+  // `content/webgl/{lessonId}/index.html`, so the student iframe 404s.
+  const cleaned = filterJunkPaths(files);
+
   // Strip any single common top-level directory so `Builds/index.html` and
   // `index.html` both look like "index.html" for matching.
-  const flat = stripCommonPrefix(files);
+  const flat = stripCommonPrefix(cleaned);
 
   const hasIndexHtml = flat.some((p) => p === 'index.html' || p.endsWith('/index.html'));
 
@@ -96,6 +106,31 @@ export function validateWebGLSummary(summary: WebGLZipSummary): string | null {
   // configurations split them differently — warn through the projectName
   // detection but don't hard-fail the upload.
   return null;
+}
+
+/**
+ * Drop OS-generated junk from a path list.
+ *
+ * Exported so the BullMQ extractor can apply the SAME filter the validator
+ * uses — otherwise the extractor would upload `__MACOSX/...` to MinIO and
+ * `stripCommonPrefix` would see a mixed top-level layout. Matching rules:
+ *   - `__MACOSX/**`           macOS resource forks from Archive Utility
+ *   - basename `.DS_Store`    Finder folder metadata
+ *   - basename starting `._`  AppleDouble sidecar files (Mac-on-non-HFS)
+ *   - basename `Thumbs.db` / `desktop.ini`  Windows Explorer metadata
+ *
+ * Case-insensitive to match Windows/macOS filesystem semantics.
+ */
+export function filterJunkPaths(paths: string[]): string[] {
+  return paths.filter((p) => {
+    if (p.startsWith('__MACOSX/')) return false;
+    const basename = p.slice(p.lastIndexOf('/') + 1);
+    if (basename === '.DS_Store') return false;
+    if (basename.startsWith('._')) return false;
+    const lower = basename.toLowerCase();
+    if (lower === 'thumbs.db' || lower === 'desktop.ini') return false;
+    return true;
+  });
 }
 
 /**

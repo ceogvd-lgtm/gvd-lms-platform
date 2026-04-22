@@ -1,4 +1,4 @@
-import { summariseWebGLZip, validateWebGLSummary } from './webgl-validator';
+import { filterJunkPaths, summariseWebGLZip, validateWebGLSummary } from './webgl-validator';
 
 /**
  * Unit tests for the WebGL pre-flight validator.
@@ -121,5 +121,77 @@ describe('webgl-validator', () => {
     const buf = await makeZip([]);
     const summary = await summariseWebGLZip(buf);
     expect(validateWebGLSummary(summary)).toBe('File zip rỗng');
+  });
+
+  // =====================================================
+  // Regression: Mac-zipped builds ship with __MACOSX/ + .DS_Store
+  // =====================================================
+
+  it('accepts a Mac-zipped build with __MACOSX/ and .DS_Store junk', async () => {
+    if (!archiverAvailable) return;
+    // Simulates what macOS Archive Utility emits: the real WebGL/ tree
+    // plus an __MACOSX/ sidecar and .DS_Store dotfiles. Before the
+    // filterJunkPaths fix, `stripCommonPrefix` gave up (two top-levels)
+    // and files landed at `{lessonId}/WebGL/index.html` instead of
+    // `{lessonId}/index.html` — so the student iframe 404'd.
+    const buf = await makeZip([
+      { path: 'WebGL/index.html' },
+      { path: 'WebGL/.DS_Store' },
+      { path: 'WebGL/Build/WebGL.loader.js' },
+      { path: 'WebGL/Build/WebGL.framework.js.gz' },
+      { path: 'WebGL/Build/WebGL.data.gz' },
+      { path: 'WebGL/Build/WebGL.wasm.gz' },
+      { path: '__MACOSX/._WebGL' },
+      { path: '__MACOSX/WebGL/._index.html' },
+      { path: '__MACOSX/WebGL/Build/._WebGL.loader.js' },
+    ]);
+    const summary = await summariseWebGLZip(buf);
+    expect(summary.hasIndexHtml).toBe(true);
+    expect(summary.hasLoader).toBe(true);
+    expect(summary.projectName).toBe('WebGL');
+    expect(summary.files).not.toContain('WebGL/index.html'); // wrapper stripped
+    expect(summary.files).toContain('index.html'); // after wrapper strip
+    expect(summary.files.every((p) => !p.startsWith('__MACOSX/'))).toBe(true);
+    expect(summary.files.every((p) => !p.endsWith('.DS_Store'))).toBe(true);
+    expect(validateWebGLSummary(summary)).toBeNull();
+  });
+
+  describe('filterJunkPaths', () => {
+    it('strips __MACOSX/ sidecar files', () => {
+      expect(
+        filterJunkPaths(['WebGL/index.html', '__MACOSX/._WebGL', '__MACOSX/WebGL/._index.html']),
+      ).toEqual(['WebGL/index.html']);
+    });
+
+    it('strips .DS_Store at any depth', () => {
+      expect(filterJunkPaths(['.DS_Store', 'WebGL/.DS_Store', 'WebGL/index.html'])).toEqual([
+        'WebGL/index.html',
+      ]);
+    });
+
+    it('strips AppleDouble ._* files', () => {
+      expect(filterJunkPaths(['WebGL/._index.html', 'WebGL/index.html'])).toEqual([
+        'WebGL/index.html',
+      ]);
+    });
+
+    it('strips Windows Thumbs.db and desktop.ini (case-insensitive)', () => {
+      expect(
+        filterJunkPaths([
+          'WebGL/Thumbs.db',
+          'WebGL/DESKTOP.INI',
+          'WebGL/thumbs.DB',
+          'WebGL/index.html',
+        ]),
+      ).toEqual(['WebGL/index.html']);
+    });
+
+    it('keeps a dot-prefixed filename that is not one of the known junk names', () => {
+      // `.env` or `.htaccess` are legitimate config files — don't nuke them.
+      expect(filterJunkPaths(['WebGL/.htaccess', 'WebGL/index.html'])).toEqual([
+        'WebGL/.htaccess',
+        'WebGL/index.html',
+      ]);
+    });
   });
 });

@@ -12,7 +12,7 @@ import unzipper from 'unzipper';
 
 import { STORAGE_PREFIXES, WEBGL_EXTRACT_QUEUE } from '../../common/storage/storage.constants';
 import { StorageService } from '../../common/storage/storage.service';
-import { stripCommonPrefix } from '../practice-contents/webgl-validator';
+import { filterJunkPaths, stripCommonPrefix } from '../practice-contents/webgl-validator';
 
 /**
  * Minimal extension → MIME map, sized for Unity WebGL build outputs.
@@ -137,23 +137,41 @@ export class WebglExtractProcessor extends WorkerHost {
       //    pre-flight validator uses, so if validation said there's an
       //    index.html, we'll see it here too.
       const directory = await unzipper.Open.file(zipPath);
-      const entries = directory.files.filter((e) => e.type === 'File');
-      if (entries.length === 0) {
+      const allEntries = directory.files.filter((e) => e.type === 'File');
+      if (allEntries.length === 0) {
         throw new Error('Empty zip — no files extracted');
       }
 
-      // 3. Normalise paths + detect wrapper folder. The validator applies
+      // 3. Drop OS junk (`__MACOSX/`, `.DS_Store`, `._*`, Windows
+      //    `Thumbs.db`). Without this, a Mac-zipped build trips
+      //    `stripCommonPrefix` into a no-op because it sees two
+      //    top-levels (`WebGL/` + `__MACOSX/`), leaves the wrapper
+      //    folder in place, and files land at `{lessonId}/WebGL/*`
+      //    instead of the predicted `{lessonId}/*` → student iframe 404s.
+      const entries = allEntries.filter((e) => {
+        const keep = filterJunkPaths([e.path.replace(/\\/g, '/')]).length === 1;
+        return keep;
+      });
+      if (entries.length === 0) {
+        throw new Error('Zip contains only OS metadata — no real build files');
+      }
+      const junkDropped = allEntries.length - entries.length;
+      if (junkDropped > 0) {
+        this.logger.log(`[${job.id}] Filtered ${junkDropped} OS junk entries (__MACOSX/.DS_Store)`);
+      }
+
+      // 4. Normalise paths + detect wrapper folder. The validator applies
       //    the SAME `stripCommonPrefix`, so file[i] (raw) corresponds to
       //    rel[i] (stripped).
       const rawPaths = entries.map((e) => e.path.replace(/\\/g, '/'));
       const relPaths = stripCommonPrefix(rawPaths);
       await job.updateProgress(30);
 
-      // 4. Clear any previous extraction at the target prefix.
+      // 5. Clear any previous extraction at the target prefix.
       const destPrefix = `${STORAGE_PREFIXES.WEBGL}/${lessonId}`;
       await this.storage.deletePrefix(destPrefix);
 
-      // 5. Stream each zip entry directly to MinIO.
+      // 6. Stream each zip entry directly to MinIO.
       let hasIndex = false;
       let uploaded = 0;
       for (let i = 0; i < entries.length; i++) {
@@ -198,7 +216,7 @@ export class WebglExtractProcessor extends WorkerHost {
         throw new Error('index.html not found in extracted WebGL build');
       }
 
-      // 6. Delete the raw zip — we don't need it once extraction succeeded.
+      // 7. Delete the raw zip — we don't need it once extraction succeeded.
       try {
         await this.storage.delete(zipKey);
       } catch (err) {
