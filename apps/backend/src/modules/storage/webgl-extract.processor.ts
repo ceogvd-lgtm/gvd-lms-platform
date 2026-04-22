@@ -148,16 +148,34 @@ export class WebglExtractProcessor extends WorkerHost {
       //    top-levels (`WebGL/` + `__MACOSX/`), leaves the wrapper
       //    folder in place, and files land at `{lessonId}/WebGL/*`
       //    instead of the predicted `{lessonId}/*` → student iframe 404s.
+      //
+      //    Also drop Unity PWA artifacts (`ServiceWorker.js` +
+      //    `manifest.webmanifest`). Unity 2022+ ships a PWA template
+      //    whose `ServiceWorker.js` runs `cache.addAll(...)` on install
+      //    to pre-cache the entire build (loader + framework + wasm +
+      //    data — often 100+ MB). Inside a student iframe, this
+      //    duplicates every file download Unity's own loader is doing,
+      //    so bandwidth and memory get split 2× on the same origin and
+      //    Unity's progress bar stalls partway through `.data.gz` (we
+      //    saw 30% stuck in practice). The SW is pointless here
+      //    (lessons load via an authenticated LMS, not as an installable
+      //    PWA). Index.html's `navigator.serviceWorker.register(…)`
+      //    becomes a harmless 404 and the promise rejects silently.
       const entries = allEntries.filter((e) => {
-        const keep = filterJunkPaths([e.path.replace(/\\/g, '/')]).length === 1;
-        return keep;
+        const rel = e.path.replace(/\\/g, '/');
+        if (filterJunkPaths([rel]).length === 0) return false;
+        const basename = rel.slice(rel.lastIndexOf('/') + 1);
+        if (basename === 'ServiceWorker.js' || basename === 'manifest.webmanifest') return false;
+        return true;
       });
       if (entries.length === 0) {
         throw new Error('Zip contains only OS metadata — no real build files');
       }
-      const junkDropped = allEntries.length - entries.length;
-      if (junkDropped > 0) {
-        this.logger.log(`[${job.id}] Filtered ${junkDropped} OS junk entries (__MACOSX/.DS_Store)`);
+      const dropped = allEntries.length - entries.length;
+      if (dropped > 0) {
+        this.logger.log(
+          `[${job.id}] Filtered ${dropped} irrelevant entries (OS junk + Unity PWA artifacts)`,
+        );
       }
 
       // 4. Normalise paths + detect wrapper folder. The validator applies
