@@ -3,7 +3,7 @@
 > File này chứa **trạng thái động** — cập nhật sau mỗi phase.
 > Quy tắc bất biến → xem `CLAUDE.md`.
 
-**Cập nhật lần cuối**: 24/04/2026 (v1.0.12)
+**Cập nhật lần cuối**: 24/04/2026 (v1.0.15)
 
 ---
 
@@ -23,13 +23,13 @@
 
 ## 1. Tình trạng production
 
-**Trạng thái**: ✅ **SẴN SÀNG PRODUCTION** — Phase 01-18B đã merge về `main` + tag `v1.0.12`.
+**Trạng thái**: ✅ **SẴN SÀNG PRODUCTION** — Phase 01-18B đã merge về `main` + tag `v1.0.15`.
 
 Brand hiện tại: **GVD next gen LMS** (3 rename iteration: Simvana → next-gen LMS → next gen LMS).
 
 | Item              | Value                                                                  |
 | ----------------- | ---------------------------------------------------------------------- |
-| Version           | `v1.0.12` (student sidebar on list pages)                              |
+| Version           | `v1.0.15` (scroll cap all feed lists)                                  |
 | Tag hash v1.0.0   | `b5c3593` (Phase 18 gốc)                                               |
 | Tag hash v1.0.1   | `366a3fb` (Phase 18B merge)                                            |
 | Tag hash v1.0.2   | `b721105` (WebGL — Mac junk + Unity PWA SW)                            |
@@ -43,7 +43,10 @@ Brand hiện tại: **GVD next gen LMS** (3 rename iteration: Simvana → next-g
 | Tag hash v1.0.10  | `1a53cad` (style(sidebar): unify color + white logo + truncate)        |
 | Tag hash v1.0.11  | `8233961` (feat(deploy): preflight health checks before deploy)        |
 | Tag hash v1.0.12  | `2d4f44e` (feat(student): navigation sidebar on list pages)            |
-| Commit gần nhất   | `2d4f44e` (feat(student): sidebar on dashboard/my-learning/progress)   |
+| Tag hash v1.0.13  | `b223689` (style(admin): cap activity feed + view all link)            |
+| Tag hash v1.0.14  | `9a6bca2` (style(layout): sticky sidebar + cap activity feeds)         |
+| Tag hash v1.0.15  | `8a55194` (style: consistent scroll-cap all feed lists)                |
+| Commit gần nhất   | `8a55194` (style: scroll cap discussions + deadlines + alerts + link)  |
 | Tổng tests PASS   | **446 unit** (47 suites) + 49 integration + 19 security + 14 E2E = 528 |
 | Frontend routes   | 36 (Backup tab + các page hiện có)                                     |
 | Prisma migrations | 12 files (+ `20260421160240_add_backup_model`)                         |
@@ -284,6 +287,30 @@ Brand hiện tại: **GVD next gen LMS** (3 rename iteration: Simvana → next-g
   - `8fd8d30` feat(backup): pg_dump system
   - `fde45bc` fix(instructor): curriculum delete + WebGL stuck
 - Push `origin/main` OK (271f7af..366a3fb)
+
+### 📜 Scroll cap all feed lists (24/04/2026 khuya) — v1.0.15
+
+- **Feature**: Sweep toàn bộ frontend (32 `<ul>` feeds audited) + fix 4 list feed có thể stretch page unbounded. Commit `8a55194`.
+- Fix thêm 4 lists:
+  - Student discussion threads (`640px`) — lesson Q&A 20+ threads
+  - Student replies per thread (`360px`) — thread 30+ replies
+  - Instructor dashboard Deadlines (`480px`) — 100+ at-risk students
+  - Admin AlertsPanel pending courses (`240px`) — insurance
+- "Xem chi tiết phân tích" link added on instructor dashboard activity feed → `/instructor/analytics`
+- 17 lists bounded by design audited và skip (curriculum tree, modals, tooltips, wizards, etc.)
+- Zero data-layer change — purely CSS class + 1 JSX footer
+
+### 🎨 Sticky sidebar + feed caps (24/04/2026 tối) — v1.0.14
+
+- **Feature**: Sidebar đứng yên khi page scroll + cap 2 activity feeds còn sót. Commit `9a6bca2`.
+- Sticky sidebar: 4 layouts (admin/instructor/student/dashboard) thêm `sticky top-0 h-screen` vào wrapper — trước đây sidebar chảy theo page scroll, chỉ còn "Đăng xuất" visible
+- Feed caps: instructor "Hoạt động học viên" + student "Lịch sử học" apply cùng pattern như admin v1.0.13
+
+### 📊 Admin activity feed cap (24/04/2026 chiều) — v1.0.13
+
+- **Feature**: Admin dashboard "Hoạt động gần đây" cap 480px + "Xem tất cả nhật ký" link → `/admin/audit-log`. Commit `b223689`.
+- Trigger: backend trả 20 items, frontend render inline → 1200px+ vertical stretch, đè mọi section phía dưới
+- Fix: `max-h-[480px] overflow-y-auto overscroll-contain pr-1` — scroll nội bộ card
 
 ### 🧭 Student sidebar on list pages (24/04/2026) — v1.0.12
 
@@ -546,6 +573,12 @@ Brand hiện tại: **GVD next gen LMS** (3 rename iteration: Simvana → next-g
 ---
 
 ## 6. Bugs đã fix gần đây
+
+### Session 24/04 chiều tối — UX polish scroll caps + sticky sidebar (v1.0.13 → v1.0.15)
+
+- **Scroll cap all feeds** (`8a55194` / v1.0.15): audit 32 `<ul>` frontend, fix 4 feeds còn unbounded: discussion threads + replies (student), deadlines (instructor), pending courses (admin alerts). +"Xem chi tiết phân tích" link instructor dashboard → `/instructor/analytics`.
+- **Sticky sidebar + feed caps** (`9a6bca2` / v1.0.14): 4 layouts thêm `sticky top-0 h-screen` để sidebar đứng yên khi scroll. Instructor activity + student timeline cũng cap 480px cùng pattern admin.
+- **Admin activity feed cap** (`b223689` / v1.0.13): dashboard "Hoạt động gần đây" render 20 items inline → stretch page 1200px. Cap `max-h-[480px]` + "Xem tất cả nhật ký" → /admin/audit-log.
 
 ### Session 24/04 — Student sidebar + preflight (v1.0.11 + v1.0.12)
 
