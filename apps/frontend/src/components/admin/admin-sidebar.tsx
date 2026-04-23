@@ -114,12 +114,16 @@ export function AdminSidebar({ collapsed = false }: AdminSidebarProps) {
       // per Phase 09 design spec.
       className="bg-slate-900 border-r-slate-800 text-slate-200"
       brand={
-        <Link href="/admin/dashboard" className="flex items-center gap-2.5 font-bold text-white">
-          <span className="flex h-10 w-10 items-center justify-center rounded-button bg-primary">
-            <GvdLogo className="h-7 w-7" />
-          </span>
+        <Link
+          href="/admin/dashboard"
+          className="flex min-w-0 items-center gap-2 font-bold text-white"
+        >
+          {/* White "dương bản" logo on the slate background — keeps the
+              brand mark crisp against the dark surface instead of
+              blending into the secondary-violet role accent. */}
+          <GvdLogo className="h-8 w-8 shrink-0 text-white" />
           {!collapsed && (
-            <span className="text-base">
+            <span className="min-w-0 truncate text-sm leading-tight">
               GVD next gen LMS <span className="text-secondary-300">· Admin</span>
             </span>
           )}

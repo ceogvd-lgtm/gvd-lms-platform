@@ -113,12 +113,13 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
       collapsed={collapsed}
       items={items}
       brand={
-        <Link href="/dashboard" className="flex items-center gap-2.5 font-bold text-primary">
-          <span className="flex h-10 w-10 items-center justify-center rounded-button bg-primary text-primary-foreground">
-            <GvdLogo className="h-7 w-7" />
-          </span>
+        <Link href="/dashboard" className="flex min-w-0 items-center gap-2 font-bold text-primary">
+          {/* Logo rides on whatever surface the parent sidebar sets (the
+              shared dashboard uses the default light surface). `shrink-0`
+              on the SVG keeps the mark square when the label truncates. */}
+          <GvdLogo className="h-8 w-8 shrink-0 text-primary" />
           {!collapsed && (
-            <span className="text-base">
+            <span className="min-w-0 truncate text-sm leading-tight">
               GVD <span className="text-secondary">next gen LMS</span>
             </span>
           )}

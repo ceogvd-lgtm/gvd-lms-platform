@@ -90,18 +90,24 @@ export function InstructorSidebar({ collapsed = false }: InstructorSidebarProps)
     <Sidebar
       collapsed={collapsed}
       items={items}
-      // Blue navy theme to distinguish from the admin (slate) sidebar.
-      className="bg-blue-700 dark:bg-blue-950 border-r-blue-800 text-blue-50"
+      // Consistent navy theme across Light + Dark — the previous Light
+      // variant (`bg-blue-700`) washed out against the amber logo chip;
+      // unifying on `bg-blue-950` gives the white brand text and the
+      // role accent (amber) maximum contrast in both modes.
+      className="bg-blue-950 border-r-blue-900 text-blue-50"
       brand={
         <Link
           href="/instructor/dashboard"
-          className="flex items-center gap-2.5 font-bold text-white"
+          className="flex min-w-0 items-center gap-2 font-bold text-white"
         >
-          <span className="flex h-10 w-10 items-center justify-center rounded-button bg-amber-400 text-blue-900">
-            <GvdLogo className="h-7 w-7" />
-          </span>
+          {/* White logo on the navy surface — "dương bản" (positive) ink
+              gives the brand mark the highest possible contrast against
+              the sidebar background, instead of competing with the amber
+              role accent next to it. `shrink-0` keeps the mark square
+              when the long label truncates. */}
+          <GvdLogo className="h-8 w-8 shrink-0 text-white" />
           {!collapsed && (
-            <span className="text-base">
+            <span className="min-w-0 truncate text-sm leading-tight">
               GVD next gen LMS <span className="text-amber-300">· Giảng viên</span>
             </span>
           )}
