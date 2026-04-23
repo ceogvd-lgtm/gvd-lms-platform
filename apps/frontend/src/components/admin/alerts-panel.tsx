@@ -72,7 +72,7 @@ export function AlertsPanel({ data, loading }: AlertsPanelProps) {
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted">
                   Khoá học mới nhất cần duyệt
                 </p>
-                <ul className="space-y-1.5">
+                <ul className="max-h-[240px] space-y-1.5 overflow-y-auto overscroll-contain pr-1">
                   {data.pendingItems.map((item) => (
                     <li key={item.id} className="flex items-center justify-between gap-2 text-xs">
                       <div className="min-w-0">

@@ -137,7 +137,10 @@ export function DiscussionsTab({ lessonId }: DiscussionsTabProps) {
       )}
 
       {query.data && query.data.length > 0 && (
-        <ul className="space-y-3">
+        // Cap the thread list so popular lessons with 20+ Q&A threads
+        // don't stretch the page to infinity. Scroll stays internal to
+        // the list container.
+        <ul className="max-h-[640px] space-y-3 overflow-y-auto overscroll-contain pr-1">
           {query.data.map((t) => (
             <ThreadCard
               key={t.id}
@@ -215,9 +218,10 @@ function ThreadCard({
           />
           <p className="whitespace-pre-wrap text-sm text-foreground">{thread.content}</p>
 
-          {/* Replies */}
+          {/* Replies — nested scroll if a thread gets busy (e.g. 30+ replies
+              on a popular lesson). Card stays a manageable size. */}
           {thread.replies.length > 0 && (
-            <ul className="space-y-2 border-l-2 border-border pl-4">
+            <ul className="max-h-[360px] space-y-2 overflow-y-auto overscroll-contain border-l-2 border-border pl-4 pr-1">
               {thread.replies.map((r) => {
                 const canDeleteReply =
                   !!user &&

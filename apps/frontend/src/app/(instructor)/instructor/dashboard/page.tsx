@@ -191,6 +191,20 @@ export default function InstructorDashboardPage() {
                 })}
               </ul>
             )}
+            {!activity.isLoading && (activity.data?.items.length ?? 0) > 0 && (
+              // Direct instructors to the full analytics drill-down when the
+              // capped feed isn't enough. Mirrors the admin ActivityFeed
+              // "Xem tất cả nhật ký" treatment in v1.0.13.
+              <div className="mt-4 border-t border-border pt-3">
+                <Link
+                  href="/instructor/analytics"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
+                >
+                  Xem chi tiết phân tích
+                  <ChevronRight className="h-3 w-3" />
+                </Link>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -211,7 +225,9 @@ export default function InstructorDashboardPage() {
             ) : deadlines.data?.items.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted">Không có học viên nào quá hạn.</p>
             ) : (
-              <ul className="space-y-2">
+              // Cap deadlines feed — an instructor with 100+ at-risk
+              // students shouldn't scroll the whole page.
+              <ul className="max-h-[480px] space-y-2 overflow-y-auto overscroll-contain pr-1">
                 {deadlines.data?.items.map((d) => (
                   <li
                     key={d.enrollmentId}
