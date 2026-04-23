@@ -74,17 +74,17 @@ export async function renderEmail(input: EmailTemplate): Promise<string> {
 export function subjectFor(template: EmailTemplateName): string {
   switch (template) {
     case 'verify-email':
-      return 'Xác nhận tài khoản GVD next-gen LMS';
+      return 'Xác nhận tài khoản GVD next gen LMS';
     case 'otp-2fa':
-      return 'Mã xác thực 2 lớp — GVD next-gen LMS';
+      return 'Mã xác thực 2 lớp — GVD next gen LMS';
     case 'reset-password':
-      return 'Đặt lại mật khẩu — GVD next-gen LMS';
+      return 'Đặt lại mật khẩu — GVD next gen LMS';
     case 'welcome':
-      return 'Chào mừng đến với GVD next-gen LMS!';
+      return 'Chào mừng đến với GVD next gen LMS!';
     case 'certificate':
       return 'Bạn đã nhận chứng chỉ mới 🏆';
     case 'weekly-progress':
-      return 'Báo cáo tiến độ tuần — GVD next-gen LMS';
+      return 'Báo cáo tiến độ tuần — GVD next gen LMS';
     case 'at-risk-alert':
       return 'Chúng tôi nhớ bạn — đừng bỏ cuộc!';
     case 'course-enrolled':

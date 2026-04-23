@@ -16,7 +16,7 @@ test.describe('Certificate verify page', () => {
         grade: 'Giỏi',
         finalScore: 85,
         issuedAt: new Date('2026-03-15').toISOString(),
-        institutionName: 'GVD next-gen LMS',
+        institutionName: 'GVD next gen LMS',
       }),
     );
     await api.attach();

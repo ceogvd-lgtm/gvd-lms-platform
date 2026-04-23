@@ -40,7 +40,7 @@ interface SettingSeed {
 const DEFAULT_SETTINGS: SettingSeed[] = [
   {
     key: 'org.name',
-    value: 'GVD next-gen LMS',
+    value: 'GVD next gen LMS',
     description: 'Tên tổ chức hiển thị trên header và email',
   },
   { key: 'org.logoUrl', value: '/logo-gvd.svg', description: 'URL logo tổ chức' },
@@ -51,7 +51,7 @@ const DEFAULT_SETTINGS: SettingSeed[] = [
   { key: 'smtp.user', value: process.env.SMTP_USER ?? '', description: 'SMTP username' },
   {
     key: 'smtp.from',
-    value: process.env.SMTP_FROM ?? 'GVD next-gen LMS <no-reply@gvd.local>',
+    value: process.env.SMTP_FROM ?? 'GVD next gen LMS <no-reply@gvd.local>',
     description: 'Địa chỉ người gửi mặc định',
   },
   { key: 'security.passwordMinLength', value: 8, description: 'Độ dài tối thiểu của mật khẩu' },

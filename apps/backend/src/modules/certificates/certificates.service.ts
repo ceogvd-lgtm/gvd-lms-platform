@@ -43,7 +43,7 @@ export interface IssueResult {
   reason?: string;
 }
 
-const INSTITUTION_NAME = 'GVD next-gen LMS';
+const INSTITUTION_NAME = 'GVD next gen LMS';
 
 /**
  * Admin certificate management (Phase 09) + auto-issue engine (Phase 16).
