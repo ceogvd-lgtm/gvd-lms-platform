@@ -3,7 +3,7 @@
 > File này chứa **trạng thái động** — cập nhật sau mỗi phase.
 > Quy tắc bất biến → xem `CLAUDE.md`.
 
-**Cập nhật lần cuối**: 23/04/2026 (v1.0.10)
+**Cập nhật lần cuối**: 24/04/2026 (v1.0.12)
 
 ---
 
@@ -22,13 +22,13 @@
 
 ## 1. Tình trạng production
 
-**Trạng thái**: ✅ **SẴN SÀNG PRODUCTION** — Phase 01-18B đã merge về `main` + tag `v1.0.10`.
+**Trạng thái**: ✅ **SẴN SÀNG PRODUCTION** — Phase 01-18B đã merge về `main` + tag `v1.0.12`.
 
 Brand hiện tại: **GVD next gen LMS** (3 rename iteration: Simvana → next-gen LMS → next gen LMS).
 
 | Item              | Value                                                                  |
 | ----------------- | ---------------------------------------------------------------------- |
-| Version           | `v1.0.10` (sidebar + logo polish)                                      |
+| Version           | `v1.0.12` (student sidebar on list pages)                              |
 | Tag hash v1.0.0   | `b5c3593` (Phase 18 gốc)                                               |
 | Tag hash v1.0.1   | `366a3fb` (Phase 18B merge)                                            |
 | Tag hash v1.0.2   | `b721105` (WebGL — Mac junk + Unity PWA SW)                            |
@@ -40,7 +40,9 @@ Brand hiện tại: **GVD next gen LMS** (3 rename iteration: Simvana → next-g
 | Tag hash v1.0.8   | `e8fae59` (fix(quiz): @Allow() decorator cho AnswerItem.answer)        |
 | Tag hash v1.0.9   | `5b494a5` (feat(brand): drop hyphen → "GVD next gen LMS")              |
 | Tag hash v1.0.10  | `1a53cad` (style(sidebar): unify color + white logo + truncate)        |
-| Commit gần nhất   | `1a53cad` (style: sidebar polish across admin/instructor/dashboard)    |
+| Tag hash v1.0.11  | `8233961` (feat(deploy): preflight health checks before deploy)        |
+| Tag hash v1.0.12  | `2d4f44e` (feat(student): navigation sidebar on list pages)            |
+| Commit gần nhất   | `2d4f44e` (feat(student): sidebar on dashboard/my-learning/progress)   |
 | Tổng tests PASS   | **446 unit** (47 suites) + 49 integration + 19 security + 14 E2E = 528 |
 | Frontend routes   | 36 (Backup tab + các page hiện có)                                     |
 | Prisma migrations | 12 files (+ `20260421160240_add_backup_model`)                         |
@@ -282,6 +284,31 @@ Brand hiện tại: **GVD next gen LMS** (3 rename iteration: Simvana → next-g
   - `fde45bc` fix(instructor): curriculum delete + WebGL stuck
 - Push `origin/main` OK (271f7af..366a3fb)
 
+### 🧭 Student sidebar on list pages (24/04/2026) — v1.0.12
+
+- **Feature**: Thêm `AppSidebar` (260px desktop / drawer mobile) vào student layout cho 3 trang top-level. Commit `2d4f44e`.
+- Trigger: user feedback — `/student/dashboard`, `/student/my-learning`, `/student/progress` hiện layout phẳng không sidebar, nhìn trống trải trên màn rộng.
+- Logic:
+  - Student layout trước cố tình bỏ sidebar (Phase 12 design) vì **lesson detail page** đã có chapter-outline sidebar riêng; thêm nav sidebar nữa sẽ ép Unity stage
+  - Fix: enable sidebar **trên tất cả trang student** + **suppress chỉ trên `/student/lessons/[id]`** bằng `hideSidebar = pathname.startsWith('/student/lessons/')`
+  - Mobile: drawer mở qua hamburger header, bottom nav 56px giữ nguyên song song
+  - Hamburger cũng ẩn trên lesson detail để không offer drawer trống
+- Không thay đổi logic auth hoặc lesson detail outline sidebar
+
+### 🛡️ Preflight deploy checks (24/04/2026 khuya) — v1.0.11
+
+- **Feature**: `scripts/preflight.sh` validate 5 external dependencies trước khi `deploy.sh` bring up backend + frontend. Commit `8233961`.
+- 5 checks với hint cụ thể khi fail:
+  1. **SMTP** — docker swaks EHLO + AUTH LOGIN + RCPT (không spam inbox)
+  2. **MinIO** — `compose up -d minio` + `/minio/health/live` + `mc ls` verify key
+  3. **Gemini API** — GET `/v1beta/models` + phân biệt 403/429/timeout
+  4. **Postgres** — `up -d postgres` + `pg_isready`
+  5. **Redis** — `up -d redis` + `redis-cli PING`
+- Placeholder detection: reject `CHANGE_ME*`/`your-client-id`/`your-domain` sớm, không gọi service thật
+- Portable Linux VPS + Windows WSL/Git Bash (Docker required)
+- Integration: `deploy.sh` call preflight trước main deploy; `--skip-preflight` flag emergency bypass
+- Catches 3 lỗi config phổ biến nhất: SMTP password sai (email im lặng), MinIO key mismatch (upload 403), Gemini key revoked (AI chat không response)
+
 ### 🎨 Sidebar + logo polish (23/04/2026 trưa) — v1.0.10
 
 - **Feature**: Dọn dẹp left sidebar (admin + instructor + dashboard). Commit `1a53cad`.
@@ -518,6 +545,11 @@ Brand hiện tại: **GVD next gen LMS** (3 rename iteration: Simvana → next-g
 ---
 
 ## 6. Bugs đã fix gần đây
+
+### Session 24/04 — Student sidebar + preflight (v1.0.11 + v1.0.12)
+
+- **Student sidebar on list pages** (`2d4f44e` / v1.0.12): user feedback 3 trang top-level (`/student/dashboard`, `/my-learning`, `/progress`) trống trải vì Phase 12 cố tình bỏ sidebar để lesson detail có outline sidebar riêng. Fix: enable sidebar toàn bộ student layout, suppress chỉ `/student/lessons/[id]` bằng pathname check. Mobile drawer mở qua hamburger, bottom nav 56px giữ nguyên.
+- **Preflight deploy checks** (`8233961` / v1.0.11): `scripts/preflight.sh` 5-check (SMTP auth, MinIO bucket, Gemini API, Postgres pg_isready, Redis PING) trước khi deploy. Detect placeholder values (`CHANGE_ME*`) trước khi gọi service. Integrated vào `deploy.sh` với `--skip-preflight` emergency flag. Portable Linux + Windows.
 
 ### Session 23/04 trưa — Brand + sidebar polish v1.0.9 + v1.0.10
 
