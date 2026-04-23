@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsString, ValidateNested } from 'class-validator';
+import { Allow, IsArray, IsString, ValidateNested } from 'class-validator';
 
 class AnswerItem {
   @IsString()
@@ -17,10 +17,16 @@ class AnswerItem {
    * `questions.service.ts#validateAndNormalizeOptions`. Earlier drafts
    * documented numeric indices; the shipping schema uses ids.
    *
-   * We keep this `unknown` in validation because class-validator can't
-   * discriminate on the enum type of the referenced question without a
-   * DB round-trip — the service does the real shape check before grading.
+   * `@Allow()` is required because the app-wide ValidationPipe is configured
+   * with `whitelist: true` + `forbidNonWhitelisted: true`, which strips /
+   * rejects any DTO field lacking a class-validator decorator. Without it
+   * every submission was rejected with `answers.N.property answer should not
+   * exist` before the service ran. We can't use a type-specific decorator
+   * (`@IsString()` etc.) because the legal shape depends on the referenced
+   * Question.type, which requires a DB round-trip — the service does that
+   * real shape check before grading.
    */
+  @Allow()
   answer!: unknown;
 }
 
