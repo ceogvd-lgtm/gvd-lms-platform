@@ -1,7 +1,8 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@lms/ui';
-import { Activity, BookOpen, LogIn, ShieldCheck } from 'lucide-react';
+import { Activity, ArrowRight, BookOpen, LogIn, ShieldCheck } from 'lucide-react';
+import Link from 'next/link';
 
 import { RoleBadge } from '@/components/ui/role-badge';
 import type { ActivityItem } from '@/lib/api';
@@ -24,6 +25,17 @@ interface ActivityFeedProps {
   loading?: boolean;
 }
 
+/**
+ * Recent activity panel for the admin dashboard.
+ *
+ * The data source (`getActivityFeed`) returns up to 20 rows, so the list
+ * has to be bounded — letting it render inline pushed the page over
+ * 1200 px and drowned everything below. We cap the scroll region at
+ * ~480 px (≈ 6 rows visible), keep `overscroll-contain` on so wheel
+ * scroll doesn't leak out to the page once you reach the bottom, and
+ * show a "Xem tất cả" footer link to the full audit log for operators
+ * who need more than the latest snapshot.
+ */
 export function ActivityFeed({ items, loading }: ActivityFeedProps) {
   return (
     <Card>
@@ -49,38 +61,49 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
         ) : items.length === 0 ? (
           <div className="py-8 text-center text-sm text-muted">Chưa có hoạt động nào gần đây.</div>
         ) : (
-          <ul className="space-y-4">
-            {items.map((item) => {
-              const Icon = TYPE_ICON[item.type];
-              return (
-                <li key={item.id} className="flex items-start gap-3">
-                  <div
-                    className={
-                      'flex h-8 w-8 shrink-0 items-center justify-center rounded-full ' +
-                      TYPE_COLOR[item.type]
-                    }
-                  >
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="font-semibold text-foreground">{item.userName}</span>
-                      <RoleBadge role={item.userRole as Role} />
+          <>
+            <ul className="max-h-[480px] space-y-4 overflow-y-auto overscroll-contain pr-1">
+              {items.map((item) => {
+                const Icon = TYPE_ICON[item.type];
+                return (
+                  <li key={item.id} className="flex items-start gap-3">
+                    <div
+                      className={
+                        'flex h-8 w-8 shrink-0 items-center justify-center rounded-full ' +
+                        TYPE_COLOR[item.type]
+                      }
+                    >
+                      <Icon className="h-4 w-4" />
                     </div>
-                    <p className="text-xs text-muted">
-                      <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px]">
-                        {item.action}
-                      </code>
-                      {item.target && <span className="ml-1">→ {item.target}</span>}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted">
-                      {new Date(item.timestamp).toLocaleString('vi-VN')}
-                    </p>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="font-semibold text-foreground">{item.userName}</span>
+                        <RoleBadge role={item.userRole as Role} />
+                      </div>
+                      <p className="text-xs text-muted">
+                        <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px]">
+                          {item.action}
+                        </code>
+                        {item.target && <span className="ml-1">→ {item.target}</span>}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted">
+                        {new Date(item.timestamp).toLocaleString('vi-VN')}
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="mt-4 border-t border-border pt-3">
+              <Link
+                href="/admin/audit-log"
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
+              >
+                Xem tất cả nhật ký
+                <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+          </>
         )}
       </CardContent>
     </Card>
