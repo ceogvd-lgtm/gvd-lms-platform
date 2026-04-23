@@ -6,8 +6,9 @@
 # applies migrations, seeds the SUPER_ADMIN on first run.
 # ---------------------------------------------------------
 # Usage:
-#   ./scripts/deploy.sh               # normal rolling update
-#   ./scripts/deploy.sh --first-run   # also seeds admin + buckets
+#   ./scripts/deploy.sh                   # normal rolling update
+#   ./scripts/deploy.sh --first-run       # also seeds admin + buckets
+#   ./scripts/deploy.sh --skip-preflight  # bypass ./scripts/preflight.sh
 # =========================================================
 set -Eeuo pipefail
 
@@ -16,9 +17,11 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
 FIRST_RUN=0
+SKIP_PREFLIGHT=0
 for arg in "$@"; do
   case "$arg" in
     --first-run) FIRST_RUN=1 ;;
+    --skip-preflight) SKIP_PREFLIGHT=1 ;;
     *) ;;
   esac
 done
@@ -57,6 +60,26 @@ for v in "${REQUIRED[@]}"; do
     exit 1
   fi
 done
+
+# ----- Preflight: verify external (SMTP, Gemini) + internal (MinIO,
+#       Postgres, Redis) services BEFORE we bring up backend + frontend.
+#       This catches the three most common "deploy green, users see 500"
+#       config-mismatches: SMTP password wrong, MinIO key rejected,
+#       Gemini API key revoked/out-of-quota. ~30-60s on a cold host,
+#       mostly the swaks + mc + pg_isready round-trips.
+#       Skip only in emergencies (e.g. a known preflight bug is blocking
+#       an otherwise healthy deploy) with --skip-preflight.
+if [[ "$SKIP_PREFLIGHT" == "0" ]]; then
+  echo "[deploy] Running preflight checks..."
+  if ! bash "$SCRIPT_DIR/preflight.sh"; then
+    echo "[deploy] ❌ Preflight failed — deploy aborted." >&2
+    echo "[deploy]   Fix the issues above and re-run, or re-run with" >&2
+    echo "[deploy]   --skip-preflight to force deploy (not recommended)." >&2
+    exit 1
+  fi
+else
+  echo "[deploy] ⚠ --skip-preflight — skipping service health checks"
+fi
 
 COMPOSE=(docker compose -f docker/docker-compose.prod.yml --env-file .env.production)
 
