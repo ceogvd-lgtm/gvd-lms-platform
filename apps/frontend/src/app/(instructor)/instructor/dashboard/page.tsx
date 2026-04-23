@@ -157,7 +157,10 @@ export default function InstructorDashboardPage() {
             ) : activity.data?.items.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted">Chưa có hoạt động nào.</p>
             ) : (
-              <ul className="space-y-3">
+              // Cap the inline feed at ~6 rows so a busy instructor page
+              // doesn't stretch to 1200px+ vertical. Same fix we shipped
+              // for the admin ActivityFeed in v1.0.13.
+              <ul className="max-h-[480px] space-y-3 overflow-y-auto overscroll-contain pr-1">
                 {activity.data?.items.map((it) => {
                   const Icon = ACTIVITY_ICON[it.type];
                   return (

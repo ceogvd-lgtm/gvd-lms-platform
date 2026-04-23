@@ -71,9 +71,11 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Desktop sidebar — hidden on lesson detail where outline sidebar lives */}
+      {/* Desktop sidebar — hidden on lesson detail where outline sidebar lives.
+          `sticky top-0 h-screen` keeps the nav rail in view while the list
+          pages scroll underneath (same pattern as (admin)/(instructor)). */}
       {!hideSidebar && (
-        <div className="hidden lg:block">
+        <div className="sticky top-0 hidden h-screen lg:block">
           <AppSidebar />
         </div>
       )}

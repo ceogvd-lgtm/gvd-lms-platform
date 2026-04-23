@@ -52,8 +52,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Desktop sidebar */}
-      <div className="hidden lg:block">
+      {/* Desktop sidebar — sticky keeps the nav rail in view while the
+          page content scrolls underneath. Without it, the sidebar is in
+          normal document flow and rolls out of the viewport, leaving only
+          the footer "Đăng xuất" visible. */}
+      <div className="sticky top-0 hidden h-screen lg:block">
         <RoleAwareSidebar />
       </div>
 

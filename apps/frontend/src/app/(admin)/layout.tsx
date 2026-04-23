@@ -67,8 +67,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Desktop sidebar */}
-      <div className="hidden lg:block">
+      {/* Desktop sidebar — sticky so it stays put as the page scrolls. Without
+          `sticky top-0 h-screen` the sidebar is in normal document flow and
+          scrolls away with the page, leaving only the footer "Đăng xuất"
+          visible at the top of the viewport once you've scrolled past the
+          brand banner. */}
+      <div className="sticky top-0 hidden h-screen lg:block">
         <AdminSidebar />
       </div>
 

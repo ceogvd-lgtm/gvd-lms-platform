@@ -166,7 +166,10 @@ function ProgressBody({ data }: { data: ProgressPayload }) {
           {data.timeline.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted">Chưa có hoạt động.</p>
           ) : (
-            <ul className="space-y-3">
+            // Cap the inline timeline so 15 rows × ~60 px doesn't
+            // stretch the /progress page past 900 px. Consistent with the
+            // admin + instructor activity-feed scroll caps.
+            <ul className="max-h-[480px] space-y-3 overflow-y-auto overscroll-contain pr-1">
               {data.timeline.slice(0, 15).map((t, i) => (
                 <li key={i} className="flex items-start gap-3 text-sm">
                   <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-primary" />

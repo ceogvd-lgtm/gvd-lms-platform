@@ -62,8 +62,9 @@ export default function InstructorLayout({ children }: { children: React.ReactNo
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Desktop sidebar */}
-      <div className="hidden lg:block">
+      {/* Desktop sidebar — sticky keeps the nav in view while the page
+          content scrolls underneath. See (admin)/layout.tsx for rationale. */}
+      <div className="sticky top-0 hidden h-screen lg:block">
         <InstructorSidebar />
       </div>
 
