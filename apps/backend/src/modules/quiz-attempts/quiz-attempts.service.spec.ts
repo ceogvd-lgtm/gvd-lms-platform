@@ -46,6 +46,49 @@ describe('quiz-attempts / grading', () => {
       gradeAnswer('FILL_BLANK' as never, 'ppe', ['personal protective equipment', 'ppe']),
     ).toBe(true);
   });
+
+  // =====================================================
+  // Regression: shipping DB stores option IDs as CUID strings
+  // (`opt_cd0d38ef588a0c99`), not numeric indices. A previous
+  // `Number(value)` coercion turned every id into NaN, and because
+  // `new Set([NaN]).has(NaN)` is true, every SINGLE_CHOICE + TRUE_FALSE
+  // submission graded as correct regardless of the student's answer.
+  // =====================================================
+
+  it('SINGLE_CHOICE with CUID option ids: grades only when ids match', () => {
+    const correct = ['opt_a849b6370cc85067'];
+    expect(gradeAnswer('SINGLE_CHOICE' as never, 'opt_a849b6370cc85067', correct)).toBe(true);
+    expect(gradeAnswer('SINGLE_CHOICE' as never, 'opt_cd0d38ef588a0c99', correct)).toBe(false);
+  });
+
+  it('TRUE_FALSE with CUID option ids: only the right id passes', () => {
+    const correct = ['opt_true_id'];
+    expect(gradeAnswer('TRUE_FALSE' as never, 'opt_true_id', correct)).toBe(true);
+    expect(gradeAnswer('TRUE_FALSE' as never, 'opt_false_id', correct)).toBe(false);
+  });
+
+  it('MULTI_CHOICE with CUID option ids: exact set match', () => {
+    const correct = ['opt_a', 'opt_c'];
+    expect(gradeAnswer('MULTI_CHOICE' as never, ['opt_a', 'opt_c'], correct)).toBe(true);
+    expect(gradeAnswer('MULTI_CHOICE' as never, ['opt_c', 'opt_a'], correct)).toBe(true);
+    expect(gradeAnswer('MULTI_CHOICE' as never, ['opt_a'], correct)).toBe(false);
+    expect(gradeAnswer('MULTI_CHOICE' as never, ['opt_a', 'opt_b'], correct)).toBe(false);
+  });
+
+  it('rejects NaN-collision from legacy Number() coercion (SINGLE_CHOICE)', () => {
+    // Simulates the exact bug path: frontend sent `Number("opt_xxx") = NaN`
+    // and backend compared with `Number(correctCuid) = NaN`. The naive
+    // Set-of-numbers comparison would return true here; the fixed string
+    // comparison must return false because `"NaN" !== "opt_xxx"`.
+    expect(gradeAnswer('SINGLE_CHOICE' as never, Number.NaN, ['opt_a849b6370cc85067'])).toBe(false);
+  });
+
+  it('empty submission is never correct', () => {
+    expect(gradeAnswer('SINGLE_CHOICE' as never, null, ['opt_x'])).toBe(false);
+    expect(gradeAnswer('SINGLE_CHOICE' as never, undefined, ['opt_x'])).toBe(false);
+    expect(gradeAnswer('MULTI_CHOICE' as never, [], ['opt_x'])).toBe(false);
+    expect(gradeAnswer('FILL_BLANK' as never, '', ['answer'])).toBe(false);
+  });
 });
 
 describe('QuizAttemptsService.submitAttempt', () => {

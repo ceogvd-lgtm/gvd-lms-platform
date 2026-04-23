@@ -12,26 +12,41 @@ import type { SubmitAttemptDto } from './dto/submit-attempt.dto';
 // =====================================================
 
 /**
- * Compare an index-based submission (SINGLE_CHOICE / TRUE_FALSE / MULTI_CHOICE).
+ * Compare an id-based submission (SINGLE_CHOICE / TRUE_FALSE / MULTI_CHOICE).
  * Returns true iff the submitted set matches the correct set exactly.
+ *
+ * Option identifiers are CUID-style strings such as `opt_cd0d38ef588a0c99`
+ * — see `questions.service.ts#validateAndNormalizeOptions`, which writes
+ * `Question.correctAnswer` as an array of these ids. A previous revision
+ * used `Number(value)` here; every id coerced to `NaN`, and because
+ * `Set([NaN]).has(NaN)` is `true` in JavaScript, every SINGLE_CHOICE and
+ * TRUE_FALSE submission graded as correct regardless of what the student
+ * picked. String equality is the single correct comparison.
+ *
+ * We accept submitted values that are either an array or a scalar
+ * (`string | number | boolean`), normalising to a string array before
+ * comparison. Legacy numeric-index submissions therefore still grade
+ * correctly against numeric-index ground truth (neither variant is in
+ * use in the shipping DB — this is future-proofing).
  */
-function compareIndexAnswer(submitted: unknown, correct: unknown): boolean {
-  const submittedArr = Array.isArray(submitted)
-    ? submitted
-    : typeof submitted === 'number'
-      ? [submitted]
-      : [];
-  const correctArr = Array.isArray(correct)
-    ? correct
-    : typeof correct === 'number'
-      ? [correct]
-      : [];
+function compareIdAnswer(submitted: unknown, correct: unknown): boolean {
+  const toStringArr = (v: unknown): string[] => {
+    if (Array.isArray(v)) return v.map((x) => (x == null ? '' : String(x)));
+    if (v == null) return [];
+    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+      return [String(v)];
+    }
+    return [];
+  };
 
-  if (submittedArr.length !== correctArr.length) return false;
+  const submittedArr = toStringArr(submitted);
+  const correctArr = toStringArr(correct);
 
-  const submittedSet = new Set(submittedArr.map(Number));
+  if (submittedArr.length === 0 || submittedArr.length !== correctArr.length) return false;
+
+  const submittedSet = new Set(submittedArr);
   for (const c of correctArr) {
-    if (!submittedSet.has(Number(c))) return false;
+    if (!submittedSet.has(c)) return false;
   }
   return true;
 }
@@ -60,7 +75,7 @@ export function gradeAnswer(type: QuestionType, submitted: unknown, correct: unk
     case QuestionType.SINGLE_CHOICE:
     case QuestionType.MULTI_CHOICE:
     case QuestionType.TRUE_FALSE:
-      return compareIndexAnswer(submitted, correct);
+      return compareIdAnswer(submitted, correct);
     default:
       return false;
   }

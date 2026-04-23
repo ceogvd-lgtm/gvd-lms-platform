@@ -107,69 +107,73 @@ export function StudentQuiz({ lessonId, locked, onPassed }: StudentQuizProps) {
   const submit = useMutation({
     mutationFn: async (): Promise<SubmitResult> => {
       if (!quiz) throw new Error('Quiz chưa tải xong');
-      // Phase 14 server grading — the answer shape is the raw `answer`
-      // value (index, index[], or trimmed text) per question type. We
-      // translate the editor's local "value" into the wire shape here
-      // so the existing idle/taking UI doesn't need to change.
+      // Wire format matches what `questions.service.ts` writes into
+      // `Question.correctAnswer`: an array of the chosen options' `id`
+      // strings (CUIDs like "opt_cd0d38ef588a0c99"), or a string for
+      // FILL_BLANK. A previous revision converted these ids with
+      // `Number(...)` which yielded NaN, and backend `Set([NaN]).has(NaN)`
+      // returned true for every SINGLE_CHOICE / TRUE_FALSE — i.e. the
+      // grader reported 100% regardless of what the student picked. Keep
+      // the ids as strings so the backend's string-equality comparison
+      // works correctly.
       const wireAnswers = quiz.questions.map((qq) => {
         const a = answers[qq.questionId];
         const raw = a?.value;
         const qType = qq.question.type;
         let answer: unknown = null;
         if (qType === 'MULTI_CHOICE') {
-          // value stored as string[] of option indices
           const arr = Array.isArray(raw) ? raw : raw ? [raw] : [];
-          answer = arr.map((s) => Number(s)).filter((n) => Number.isInteger(n));
+          answer = arr.map(String).filter((s) => s.length > 0);
         } else if (qType === 'FILL_BLANK') {
           answer = typeof raw === 'string' ? raw : '';
         } else {
-          // SINGLE_CHOICE / TRUE_FALSE → single index
+          // SINGLE_CHOICE / TRUE_FALSE → single option id string
           const s = Array.isArray(raw) ? raw[0] : raw;
-          answer = s !== undefined && s !== '' ? Number(s) : null;
+          answer = s !== undefined && s !== '' ? String(s) : null;
         }
         return { questionId: qq.questionId, answer };
       });
 
-      try {
-        const res = await api<{
-          attemptId: string;
-          score: number;
-          maxScore: number;
-          percent: number;
-          passed: boolean;
-          passScore: number;
-          results: Array<{
-            questionId: string;
-            correct: boolean;
-            awarded: number;
-            maxPoints: number;
-            explanation: string | null;
-          }>;
-        }>('/quiz-attempts', {
-          method: 'POST',
-          body: { quizId: quiz.id, answers: wireAnswers },
-          token: accessToken!,
-        });
-        return {
-          id: res.attemptId,
-          score: res.score,
-          maxScore: res.maxScore,
-          passed: res.passed,
-          perQuestion: res.results.map((r) => ({
-            questionId: r.questionId,
-            correct: r.correct,
-            awardedPoints: r.awarded,
-            // Backend intentionally does NOT leak correctAnswer — the
-            // existing UI showed it next to explanation; we hide it now
-            // by passing an empty array.
-            correctAnswer: [],
-            explanation: r.explanation,
-          })),
-        };
-      } catch {
-        // Fallback to Phase 12 local grader if server refused.
-        return gradeLocally(quiz, answers);
-      }
+      // Server-side grading is the ONLY source of truth — `gradeLocally`
+      // used to mask server errors by awarding full marks (`correct: true`
+      // for every question), so what looked like a "pass" was actually a
+      // no-op fallback. Let errors bubble up to the toast so the student
+      // sees "Nộp bài thất bại" instead of a fake 100%.
+      const res = await api<{
+        attemptId: string;
+        score: number;
+        maxScore: number;
+        percent: number;
+        passed: boolean;
+        passScore: number;
+        results: Array<{
+          questionId: string;
+          correct: boolean;
+          awarded: number;
+          maxPoints: number;
+          explanation: string | null;
+        }>;
+      }>('/quiz-attempts', {
+        method: 'POST',
+        body: { quizId: quiz.id, answers: wireAnswers },
+        token: accessToken!,
+      });
+      return {
+        id: res.attemptId,
+        score: res.score,
+        maxScore: res.maxScore,
+        passed: res.passed,
+        perQuestion: res.results.map((r) => ({
+          questionId: r.questionId,
+          correct: r.correct,
+          awardedPoints: r.awarded,
+          // Backend intentionally does NOT leak correctAnswer — the
+          // existing UI showed it next to explanation; we hide it now
+          // by passing an empty array.
+          correctAnswer: [],
+          explanation: r.explanation,
+        })),
+      };
     },
     onSuccess: (res) => {
       setResult(res);
@@ -438,33 +442,4 @@ export function StudentQuiz({ lessonId, locked, onPassed }: StudentQuizProps) {
   }
 
   return null;
-}
-
-/**
- * Client-side grading when the backend can't grade.
- *
- * We only call this after catching the `/quiz-attempts` 501. The quiz
- * row here has `correctAnswer: []` and `options[i].isCorrect === false`
- * for student viewers (redacted by the backend), so grading ends up
- * passing trivially — that's a documented Phase 12 limitation. The
- * cleaner path lives in Phase 13: add a real submit + grade endpoint.
- */
-function gradeLocally(quiz: QuizWithQuestions, answers: Record<string, Answer>): SubmitResult {
-  const perQuestion = quiz.questions.map((qq) => ({
-    questionId: qq.question.id,
-    correct: true,
-    awardedPoints: qq.points,
-    correctAnswer: qq.question.correctAnswer,
-    explanation: qq.question.explanation,
-  }));
-  const maxScore = quiz.questions.reduce((sum, q) => sum + q.points, 0);
-  const score = maxScore;
-  void answers;
-  return {
-    id: `local-${Date.now()}`,
-    score,
-    maxScore,
-    perQuestion,
-    passed: (score / Math.max(1, maxScore)) * 100 >= quiz.passScore,
-  };
 }
