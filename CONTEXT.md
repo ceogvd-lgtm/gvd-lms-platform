@@ -17,6 +17,7 @@
 6. [Bugs đã fix gần đây](#6-bugs-đã-fix-gần-đây)
 7. [Test baseline](#7-test-baseline)
 8. [Deploy reference](#8-deploy-reference)
+9. [Roadmap / Deferred features](#9-roadmap--deferred-features)
 
 ---
 
@@ -688,6 +689,99 @@ docker compose stop backend
 # Gõ "YES I UNDERSTAND" xác nhận
 docker compose start backend
 ```
+
+---
+
+## 9. Roadmap / Deferred features
+
+> Các feature đã thảo luận thiết kế nhưng **HOÃN** triển khai để thu feedback
+> thực tế từ production trước. Mỗi entry có đủ context để resume sau 1-2
+> tuần mà không cần rediscovery.
+
+### 🔮 Enroll đa ngành cho sinh viên (discussed 24/04/2026)
+
+**Bài toán thực tế**:
+
+Sinh viên / nhân viên DN trong 1 kỳ phải học song song nhiều môn từ nhiều
+khoa — môn chuyên ngành (Khoa Điện) + ngoại ngữ (Khoa Ngoại ngữ) + lịch
+sử (Khoa LLCT) + GDTC + môn tự chọn. Tương tự doanh nghiệp: nhân viên
+IT học Security awareness (HR) + Cybersecurity (IT) + Business
+communication (Training).
+
+**Hiện trạng**:
+
+- `CourseEnrollment(studentId, courseId)` **đã là many-to-many** — student
+  có thể enrolled courses từ bất kỳ Khoa nào (qua manual enroll)
+- Hạn chế thực sự: **auto-enroll** chỉ match `User.departmentId` = ngành
+  chính của student → courses đại cương xuyên khoa phải admin enroll
+  thủ công từng student (không scale)
+
+**3 options đã cân nhắc — đã BÁC option N-to-N User-Department**:
+
+| Option                              | Đánh giá                                                                                                                                  |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| User-Department N-to-N (join table) | ❌ Over-engineering — 10h work, 134 reference points phải refactor, vẫn cần admin gán tay từng student. Không giải được bài toán thực sự. |
+| ❶ `CourseRequirementType` flag      | ✅ **KHUYẾN NGHỊ** — 4h work, 1 column add-only migration, chuẩn mực Moodle/Canvas                                                        |
+| ❷ Cohort / Learning Track           | ⏸️ Chuẩn mực đại học, nhưng 12h work + migration lớn — chờ xem có cần quản lý batch K25/K26 không                                         |
+| ❸ Batch enrollment admin tool       | ✅ **COMBO với ❶** — 3h work, 0 migration, UI multi-select 200 student + enroll 1 click                                                   |
+
+**Kế hoạch khi resume**:
+
+```prisma
+// Thêm vào model Course (backward-compat migration):
+enum CourseRequirementType {
+  DEPARTMENT_ONLY  // default — giữ behavior cũ (auto-enroll theo dept)
+  ALL_STUDENTS     // đại cương: ngoại ngữ, lịch sử, GDTC
+  BY_ROLE          // theo role (vd mọi EMPLOYEE học Security awareness)
+}
+
+model Course {
+  requirementType CourseRequirementType @default(DEPARTMENT_ONLY)
+  targetRole      Role?  // chỉ dùng khi requirementType = BY_ROLE
+}
+```
+
+**Auto-enroll service** rẽ nhánh theo `requirementType`:
+
+```ts
+const students = await prisma.user.findMany({
+  where:
+    course.requirementType === 'DEPARTMENT_ONLY'
+      ? { role: 'STUDENT', departmentId: course.department.id }
+      : course.requirementType === 'ALL_STUDENTS'
+        ? { role: 'STUDENT' }
+        : { role: course.targetRole }, // BY_ROLE
+});
+```
+
+**Instructor không thay đổi** — giữ 1 department, dạy course nào do admin
+assign manual (không ràng buộc check department khi assign).
+
+**Permission đã confirmed**: thêm/bớt department cho user = ADMIN +
+SUPER_ADMIN (khớp với `/admin/*` class-level `@Roles`).
+
+**Trigger để resume**:
+
+- Sau 1-2 tuần production thu feedback từ instructor/admin
+- Dấu hiệu cần ship: admin báo "em phải enroll tay 100 student vào môn
+  ngoại ngữ mỗi kỳ" → ship v1.1.0
+- Nếu không có complaint → keep deferred, có thể không cần bao giờ
+
+**Effort estimate khi ship**: 8-10h = 1-1.5 ngày
+
+- Schema + migration (add column): 45m
+- Auto-enroll service branch logic: 1h
+- Admin UI create-course form (radio: ngành / toàn trường / theo role): 1.5h
+- Batch enrollment tool (multi-select students → enroll): 3h
+- Tests (regression + 3 new scenarios): 2h
+- Docs + tag v1.1.0: 30m
+
+**Risk migration**: 🟢 THẤP — chỉ ADD column, không drop gì, backward-compat
+100% (default value = behavior cũ).
+
+**Keywords** (để search lại conversation này): enroll đa ngành,
+CourseRequirementType, ALL_STUDENTS, BY_ROLE, batch enrollment, cohort,
+learning track, môn đại cương, ngoại ngữ xuyên khoa.
 
 ---
 
