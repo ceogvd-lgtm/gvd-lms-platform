@@ -74,9 +74,9 @@ echo ""
 header "1. Tên miền (domain)"
 echo "Domain bạn đã mua và đã trỏ A record về IP của VPS này."
 echo "Ví dụ: gvdsoft.com.vn / lms.truongdientu.edu.vn"
-ask "Domain chính:"
+ask "Domain chính [nextgenlms.com.vn]:"
 read -r DOMAIN
-DOMAIN="${DOMAIN:-gvdsoft.com.vn}"
+DOMAIN="${DOMAIN:-nextgenlms.com.vn}"
 info "Sử dụng: $DOMAIN"
 
 # ============================================================
