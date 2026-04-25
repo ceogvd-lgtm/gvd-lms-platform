@@ -88,10 +88,13 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:8000/api/v2/heartbeat']
+      # chromadb/chroma image doesn't ship curl/wget — use bash's /dev/tcp
+      # to check port 8000 is open (container is up + listening).
+      test: ['CMD-SHELL', 'timeout 3 bash -c "</dev/tcp/localhost/8000"']
       interval: 15s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
   backend:
     build:
@@ -159,7 +162,10 @@ services:
       - '443:443'
     volumes:
       - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
-      - nginx_certs:/etc/letsencrypt
+      # Bind-mount the host's /etc/letsencrypt (where certbot writes certs)
+      # so monthly renewal is picked up by nginx after a reload, no volume
+      # sync step needed. Read-only — nginx shouldn't mutate certs.
+      - /etc/letsencrypt:/etc/letsencrypt:ro
       - nginx_www:/var/www/certbot
     depends_on:
       backend:
@@ -170,7 +176,9 @@ services:
       - internal
       - public
     healthcheck:
-      test: ['CMD', 'wget', '-q', '--spider', 'http://localhost/healthz']
+      # Use 127.0.0.1 not localhost — busybox wget tries IPv6 (::1) first
+      # and nginx only binds IPv4 by default, so `localhost` gets ECONNREFUSED.
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1/healthz']
       interval: 30s
       timeout: 5s
       retries: 3
@@ -187,5 +195,4 @@ volumes:
   redis_data:
   minio_data:
   chroma_data:
-  nginx_certs:
   nginx_www:

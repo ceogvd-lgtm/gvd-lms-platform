@@ -30,19 +30,24 @@ const LOGIN_LOCK_TTL_SECONDS = 15 * 60; // 15 min
 const EMAIL_VERIFY_TTL_SECONDS = 24 * 60 * 60; // 24h
 const OTP_TTL_SECONDS = 10 * 60; // 10 min
 const OTP_RESEND_COOLDOWN_SECONDS = 60;
-const TEMP_TOKEN_TTL_SECONDS = 5 * 60; // 5 min
+// TEMP token TTL dùng cho flow 2FA — hiện đang disable, giữ lại để khi
+// uncomment block 2FA không phải thêm lại. Prefix `_` để eslint bỏ qua.
+const _TEMP_TOKEN_TTL_SECONDS = 5 * 60; // 5 min
 const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60; // 7d
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60; // 15 min
 
 // Redis key helpers — kept here so the schema is discoverable alongside use.
 const K = {
   emailVerify: (token: string) => `auth:email-verify:${token}`,
+  passwordReset: (token: string) => `auth:password-reset:${token}`,
   refresh: (jti: string) => `auth:refresh:${jti}`,
   loginFail: (email: string) => `auth:login:fail:${email.toLowerCase()}`,
   loginLock: (email: string) => `auth:login:lock:${email.toLowerCase()}`,
   otp: (userId: string) => `auth:2fa:otp:${userId}`,
   otpResend: (userId: string) => `auth:2fa:resend:${userId}`,
 };
+
+const PASSWORD_RESET_TTL_SECONDS = 60 * 60; // 1h
 
 /** Shape sent back to clients — never includes `password`. */
 type SafeUser = Omit<SharedUser, never>;
@@ -109,6 +114,10 @@ export class AuthService {
         name: dto.name,
         password: hashed,
         role: Role.STUDENT,
+        // SMTP chưa cấu hình — auto-verify email để user đăng ký xong
+        // login được ngay, không phụ thuộc email đi tới. Khi SMTP bật lại
+        // và muốn bắt buộc xác thực, đổi về false ở dòng này.
+        emailVerified: true,
       },
       select: { id: true, email: true, name: true },
     });
@@ -118,7 +127,10 @@ export class AuthService {
     await this.redis.set(K.emailVerify(token), user.id, EMAIL_VERIFY_TTL_SECONDS);
 
     const frontendUrl = this.config.get<string>('FRONTEND_URL') ?? 'http://localhost:3000';
-    const link = `${frontendUrl}/auth/verify-email?token=${token}`;
+    // Frontend route nằm trong (auth) group → URL thực tế là /verify-email
+    // (không có /auth/ prefix vì route group chỉ là tổ chức folder, không xuất
+    // hiện trong URL). Dùng /auth/verify-email sẽ trả 404.
+    const link = `${frontendUrl}/verify-email?token=${token}`;
 
     try {
       await this.email.sendVerifyEmail(user.email, user.name, link);
@@ -147,6 +159,82 @@ export class AuthService {
     await this.redis.del(K.emailVerify(token));
 
     return { message: 'Xác thực email thành công' };
+  }
+
+  // =====================================================
+  // FORGOT PASSWORD — gửi email reset link
+  // =====================================================
+  /**
+   * Luôn trả về cùng 1 message dù email có tồn tại hay không, để tránh
+   * email enumeration (attacker đoán email nào đã đăng ký).
+   *
+   * Token reset lưu trong Redis với TTL 1h. Nếu user request nhiều lần
+   * trong 1h, token mới ghi đè token cũ (token cũ vẫn còn hiệu lực tới
+   * khi expire hoặc được dùng).
+   */
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    const GENERIC_MESSAGE =
+      'Nếu email đã đăng ký, hướng dẫn đặt lại mật khẩu sẽ được gửi đến hộp thư.';
+
+    const emailLower = email.toLowerCase();
+    const user = await this.prisma.client.user.findUnique({
+      where: { email: emailLower },
+      select: { id: true, email: true, name: true, password: true },
+    });
+
+    // Bỏ qua im lặng nếu:
+    // - email không tồn tại (tránh enumeration)
+    // - user dùng Google OAuth (password=null, reset không áp dụng)
+    if (!user || !user.password) {
+      return { message: GENERIC_MESSAGE };
+    }
+
+    const token = randomBytes(32).toString('hex');
+    await this.redis.set(K.passwordReset(token), user.id, PASSWORD_RESET_TTL_SECONDS);
+
+    const frontendUrl = this.config.get<string>('FRONTEND_URL') ?? 'http://localhost:3000';
+    const link = `${frontendUrl}/reset-password?token=${token}`;
+
+    try {
+      await this.email.sendResetPassword(user.email, user.name, link);
+    } catch (err) {
+      // Không throw — để user vẫn nhận message chung, tránh lộ email existence.
+      this.logger.warn(
+        `Forgot-password ${user.email} queued but send failed: ${(err as Error).message}`,
+      );
+    }
+
+    return { message: GENERIC_MESSAGE };
+  }
+
+  // =====================================================
+  // RESET PASSWORD — đổi password bằng token
+  // =====================================================
+  async resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+    const userId = await this.redis.get(K.passwordReset(token));
+    if (!userId) {
+      throw new BadRequestException('Token đặt lại mật khẩu không hợp lệ hoặc đã hết hạn');
+    }
+
+    const user = await this.prisma.client.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new BadRequestException('Token đặt lại mật khẩu không hợp lệ hoặc đã hết hạn');
+    }
+
+    const hashed = await bcrypt.hash(newPassword, BCRYPT_SALT_ROUNDS);
+    await this.prisma.client.user.update({
+      where: { id: userId },
+      data: { password: hashed },
+    });
+
+    // Thu hồi token — dùng 1 lần duy nhất.
+    await this.redis.del(K.passwordReset(token));
+
+    // Xoá brute-force counter nếu có, để user login ngay với pass mới.
+    await this.redis.del(K.loginFail(user.email));
+    await this.redis.del(K.loginLock(user.email));
+
+    return { message: 'Đặt lại mật khẩu thành công. Bạn có thể đăng nhập ngay.' };
   }
 
   // =====================================================
@@ -200,19 +288,22 @@ export class AuthService {
     // Password correct — clear brute-force counter
     await this.redis.del(K.loginFail(emailLower));
 
-    // 5. 2FA branch
-    if (user.is2FAEnabled) {
-      const tempToken = await this.jwt.signAsync(
-        {
-          sub: user.id,
-          email: user.email,
-          role: user.role,
-          scope: '2fa',
-        } satisfies JwtPayload,
-        { expiresIn: TEMP_TOKEN_TTL_SECONDS },
-      );
-      return { requires2FA: true, tempToken };
-    }
+    // 5. 2FA branch — TẠM VÔ HIỆU HOÁ vì SMTP chưa cấu hình, OTP không gửi
+    // được qua email → user sẽ bị kẹt ở /2fa. Khi bật lại SMTP, uncomment
+    // block dưới để khôi phục bảo vệ 2FA.
+    //
+    // if (user.is2FAEnabled) {
+    //   const tempToken = await this.jwt.signAsync(
+    //     {
+    //       sub: user.id,
+    //       email: user.email,
+    //       role: user.role,
+    //       scope: '2fa',
+    //     } satisfies JwtPayload,
+    //     { expiresIn: TEMP_TOKEN_TTL_SECONDS },
+    //   );
+    //   return { requires2FA: true, tempToken };
+    // }
 
     // 6. Issue access + refresh
     const tokens = await this.issueTokens(user);

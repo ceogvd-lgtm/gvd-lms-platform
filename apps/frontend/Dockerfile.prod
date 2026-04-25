@@ -48,6 +48,12 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
+# Next.js standalone server.js reads HOSTNAME from env and binds only
+# to that interface. Docker sets HOSTNAME to the container ID by default,
+# which resolves to the container's bridge IP — so wget http://localhost:3000
+# inside the container gets ECONNREFUSED. Pin to 0.0.0.0 so the server
+# listens on all interfaces (including loopback, for the healthcheck).
+ENV HOSTNAME=0.0.0.0
 
 RUN addgroup -S nextjs && adduser -S nextjs -G nextjs
 RUN apk add --no-cache wget

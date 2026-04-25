@@ -19,10 +19,12 @@ import { AuthService } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { Send2FADto } from './dto/send-2fa.dto';
 import { Toggle2FADto } from './dto/toggle-2fa.dto';
 import { Verify2FADto } from './dto/verify-2fa.dto';
@@ -54,6 +56,21 @@ export class AuthController {
   @Get('verify-email')
   verifyEmail(@Query('token') token: string) {
     return this.auth.verifyEmail(token);
+  }
+
+  // ---------- FORGOT / RESET PASSWORD ----------
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.auth.forgotPassword(dto.email);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.auth.resetPassword(dto.token, dto.newPassword);
   }
 
   // ---------- LOGIN ----------

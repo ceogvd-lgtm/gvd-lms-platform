@@ -63,6 +63,17 @@ COPY --from=builder /app/apps/backend/dist ./apps/backend/dist
 
 # Install only production deps (drops jest/ts-node/eslint).
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts
+
+# bcrypt ships a native N-API binding that --ignore-scripts skips.
+# pnpm rebuild silently no-ops inside its isolated .pnpm store, so we
+# cd into the bcrypt package and run `npm install --build-from-source`
+# which invokes node-gyp directly and produces lib/binding/napi-v3/bcrypt_lib.node.
+# The build-deps virtual package is removed right after to keep the image small.
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \
+ && cd /app/node_modules/.pnpm/bcrypt@5.1.1/node_modules/bcrypt \
+ && npm install --build-from-source --no-save \
+ && apk del .build-deps
+
 # Re-generate Prisma Client in the runner so the @prisma/client binary
 # matches the current Alpine libc — generating it in the builder and
 # copying node_modules over can mismatch platform targets.

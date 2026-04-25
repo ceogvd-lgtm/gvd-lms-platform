@@ -404,45 +404,62 @@ export class CoursesService {
       newValue: { status: nextStatus, reason: dto.reason },
     });
 
-    // Phase 18 — auto-enroll student cùng department khi course vừa được
-    // APPROVE (DRAFT/PENDING_REVIEW → PUBLISHED). Fire-and-forget: nếu
-    // fail, course vẫn xuất bản thành công, admin có thể re-trigger qua
-    // POST /enrollments/auto-enroll. Gắn enrollment count vào response
-    // để FE hiện toast "Đã duyệt + ghi danh N học viên".
-    let autoEnrollResult:
-      | {
-          enrolled: number;
-          skipped: number;
-          total: number;
-          departmentName: string | null;
-        }
-      | undefined;
-    if (dto.action === 'APPROVE' && nextStatus === CourseStatus.PUBLISHED) {
-      try {
-        const r = await this.enrollments.autoEnrollByDepartment(id);
-        autoEnrollResult = {
-          enrolled: r.enrolled,
-          skipped: r.skipped,
-          total: r.total,
-          departmentName: r.departmentName,
-        };
-        // Audit sep để tách phân luồng khỏi COURSE_APPROVE.
-        await this.audit.log({
-          userId: actor.id,
-          action: 'AUTO_ENROLL_ON_APPROVE',
-          targetType: 'Course',
-          targetId: id,
-          ipAddress: meta.ip,
-          newValue: autoEnrollResult,
-        });
-      } catch (err) {
-        this.logger.warn(
-          `Auto-enroll on APPROVE failed (non-fatal): course=${id} ${(err as Error).message}`,
-        );
-      }
+    // Phase 18 — auto-enroll student cùng department MỖI KHI course
+    // chuyển sang PUBLISHED (từ bất kỳ trạng thái nào). Hiện tại chỉ
+    // APPROVE có thể reach PUBLISHED, nhưng check theo nextStatus giúp
+    // future-proof (ví dụ sau này thêm UNARCHIVE_TO_PUBLISHED).
+    //
+    // Fire-and-forget: không block response — admin bấm "Duyệt" không
+    // phải chờ Prisma insert batch hoàn tất. Background task log kết quả
+    // cho audit. Idempotent nhờ skipDuplicates nên chạy nhiều lần an toàn.
+    const justPublished =
+      nextStatus === CourseStatus.PUBLISHED && course.status !== CourseStatus.PUBLISHED;
+    if (justPublished) {
+      // Không dùng `await` → gửi ra background, không block response.
+      this.triggerAutoEnrollAsync(id, actor.id, meta.ip);
     }
 
-    return { ...updated, autoEnroll: autoEnrollResult };
+    return updated;
+  }
+
+  /**
+   * Background task: gọi EnrollmentsService.autoEnrollByDepartment rồi
+   * ghi audit log. Tách ra private method để:
+   *   - Dễ viết unit test (stub hoặc spy)
+   *   - Isolate error handling — nếu fail, chỉ log warn, không bao giờ
+   *     throw ra caller (vì caller đã return response rồi)
+   */
+  private triggerAutoEnrollAsync(courseId: string, actorId: string, ip: string): void {
+    this.enrollments
+      .autoEnrollByDepartment(courseId)
+      .then(async (r) => {
+        this.logger.log(
+          `[auto-enroll] course=${courseId} dept=${r.departmentName ?? '(none)'} ` +
+            `enrolled=${r.enrolled} skipped=${r.skipped} total=${r.total}`,
+        );
+        try {
+          await this.audit.log({
+            userId: actorId,
+            action: 'AUTO_ENROLL_ON_PUBLISH',
+            targetType: 'Course',
+            targetId: courseId,
+            ipAddress: ip,
+            newValue: {
+              enrolled: r.enrolled,
+              skipped: r.skipped,
+              total: r.total,
+              departmentName: r.departmentName,
+            },
+          });
+        } catch (auditErr) {
+          this.logger.warn(
+            `[auto-enroll] audit log failed course=${courseId}: ${(auditErr as Error).message}`,
+          );
+        }
+      })
+      .catch((err) => {
+        this.logger.warn(`[auto-enroll] FAILED course=${courseId}: ${(err as Error).message}`);
+      });
   }
 
   // =====================================================

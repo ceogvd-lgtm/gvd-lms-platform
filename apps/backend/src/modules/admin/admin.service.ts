@@ -378,6 +378,54 @@ export class AdminService {
       select: { ...USER_SAFE_SELECT, departmentId: true },
     });
 
+    // =====================================================
+    // RECONCILE ENROLLMENTS khi đổi department.
+    // - Chỉ áp với STUDENT (instructor/admin không bị auto-enroll).
+    // - Xoá enrollment ở dept CŨ (course thuộc subject của dept cũ).
+    // - Tạo enrollment cho mọi course PUBLISHED của dept MỚI.
+    // - LessonProgress / QuizAttempt / Certificate giữ nguyên — nếu
+    //   user quay lại dept cũ, tiến trình học cũ vẫn còn.
+    // =====================================================
+    const newDepartmentId = dto.departmentId ?? null;
+    if (target.role === Role.STUDENT && prevDepartmentId !== newDepartmentId) {
+      // 1. Xoá enrollments thuộc dept CŨ
+      if (prevDepartmentId) {
+        await this.prisma.client.courseEnrollment.deleteMany({
+          where: {
+            studentId: targetId,
+            course: {
+              subject: { departmentId: prevDepartmentId },
+            },
+          },
+        });
+      }
+
+      // 2. Auto-enroll vào mọi course PUBLISHED của dept MỚI
+      if (newDepartmentId) {
+        const newDeptCourses = await this.prisma.client.course.findMany({
+          where: {
+            status: 'PUBLISHED',
+            isDeleted: false,
+            subject: {
+              departmentId: newDepartmentId,
+              isDeleted: false,
+            },
+          },
+          select: { id: true },
+        });
+
+        if (newDeptCourses.length > 0) {
+          await this.prisma.client.courseEnrollment.createMany({
+            data: newDeptCourses.map((c) => ({
+              courseId: c.id,
+              studentId: targetId,
+            })),
+            skipDuplicates: true,
+          });
+        }
+      }
+    }
+
     await this.audit.log({
       userId: actor.id,
       action: 'ADMIN_UPDATE_USER_DEPARTMENT',

@@ -104,7 +104,7 @@ describe('AuthService', () => {
       expect(emailMock.sendVerifyEmail).toHaveBeenCalledWith(
         'a@b.com',
         'Test',
-        expect.stringMatching(/^http:\/\/localhost:3000\/auth\/verify-email\?token=/),
+        expect.stringMatching(/^http:\/\/localhost:3000\/verify-email\?token=/),
       );
       expect(res.message).toContain('Đăng ký thành công');
     });
