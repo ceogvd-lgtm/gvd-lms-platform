@@ -55,6 +55,13 @@ export const PUBLIC_PREFIXES: readonly string[] = [
   STORAGE_PREFIXES.WEBGL,
   STORAGE_PREFIXES.SCORM,
   STORAGE_PREFIXES.VIDEO,
+  // PPT joined the public list when LibreOffice was installed in the
+  // backend container — slides are static PNG screenshots of the deck,
+  // not sensitive. Need public access because (a) the browser can't
+  // resolve the docker-internal `minio:9000` host inside a presigned URL
+  // and (b) presigned URLs would expire mid-lesson while the student is
+  // flipping through 30+ slides over an hour. Same reasoning as VIDEO.
+  STORAGE_PREFIXES.PPT,
 ];
 
 /** Size limits per upload type (bytes). */
