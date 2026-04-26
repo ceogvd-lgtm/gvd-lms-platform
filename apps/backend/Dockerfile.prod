@@ -54,6 +54,18 @@ RUN addgroup -S nestjs && adduser -S nestjs -G nestjs
 # uploads the dump to MinIO under `backups/`, then triggers restore via
 # `psql` when SUPER_ADMIN requests a rollback.
 RUN apk add --no-cache libc6-compat openssl wget postgresql-client
+
+# Phase 12 — LibreOffice + poppler để PptConverterService convert .pptx → PDF → PNG.
+# Code: apps/backend/src/modules/theory-contents/ppt-converter.service.ts gọi
+#   `libreoffice --headless --convert-to pdf` rồi `pdftoppm -png -r 144`.
+# Fonts Noto/DejaVu/Liberation render tiếng Việt + symbols đúng. Image size +500MB
+# nhưng tránh fallback "Đang xử lý slides..." khi giảng viên upload PPT.
+RUN apk add --no-cache \
+      libreoffice \
+      poppler-utils \
+      ttf-dejavu ttf-liberation \
+      font-noto font-noto-cjk
+
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 COPY --from=builder /app/pnpm-workspace.yaml /app/pnpm-lock.yaml /app/package.json ./
